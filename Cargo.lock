@@ -365,7 +365,7 @@ dependencies = [
  "bitflags 2.4.2",
  "cexpr",
  "clang-sys",
- "itertools",
+ "itertools 0.11.0",
  "lazy_static",
  "lazycell",
  "log",
@@ -444,9 +444,9 @@ name = "bls12_381"
 version = "0.7.0"
 source = "git+https://github.com/lanbones/bls12_381.git#31fcd53a340cadbb5558bb75422516b81704a0a1"
 dependencies = [
- "ff",
- "group",
- "pairing",
+ "ff 0.12.1",
+ "group 0.12.1",
+ "pairing 0.22.0",
  "rand_core",
  "subtle",
 ]
@@ -566,7 +566,7 @@ dependencies = [
  "clap",
  "downcast-rs",
  "env_logger",
- "ff",
+ "ff 0.12.1",
  "halo2_proofs",
  "halo2aggregator-s",
  "hex",
@@ -913,8 +913,8 @@ dependencies = [
  "crossbeam-channel",
  "ec-gpu",
  "execute",
- "ff",
- "group",
+ "ff 0.12.1",
+ "group 0.12.1",
  "hex",
  "log",
  "num_cpus",
@@ -1096,6 +1096,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ff"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ded41244b729663b1e574f1b4fb731469f69f79c17667b5d776b16cda0479449"
+dependencies = [
+ "bitvec",
+ "rand_core",
+ "subtle",
+]
+
+[[package]]
 name = "fil-rustacuda"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1119,7 +1130,7 @@ version = "0.10.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1657b4441c3403d9f7b3409e47575237dac27b1b5726df654a6ecbf92f0f7577"
 dependencies = [
- "spin",
+ "spin 0.9.8",
 ]
 
 [[package]]
@@ -1329,7 +1340,18 @@ version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5dfbfb3a6cfbd390d5c9564ab283a0349b9b9fcd46a706c1eb10e0db70bfbac7"
 dependencies = [
- "ff",
+ "ff 0.12.1",
+ "rand_core",
+ "subtle",
+]
+
+[[package]]
+name = "group"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f0f9ef7462f7c099f518d754361858f86d8a07af53ba9af0fe635bbccb151a63"
+dependencies = [
+ "ff 0.13.0",
  "rand_core",
  "subtle",
 ]
@@ -1337,7 +1359,7 @@ dependencies = [
 [[package]]
 name = "halo2_proofs"
 version = "0.1.0-beta.1"
-source = "git+https://github.com/DelphinusLab/halo2-gpu-specific.git#9a81f601607bdc3ff3360a9ad66885c9796f487b"
+source = "git+https://github.com/DelphinusLab/halo2-gpu-specific.git#fe464bd14d7d1155964d39a029c9903b453aeac8"
 dependencies = [
  "ark-std",
  "blake2b_simd",
@@ -1346,8 +1368,8 @@ dependencies = [
  "core_affinity",
  "cuda-driver-sys",
  "ec-gpu-gen",
- "ff",
- "group",
+ "ff 0.12.1",
+ "group 0.12.1",
  "lazy_static",
  "log",
  "memmap",
@@ -1382,9 +1404,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "halo2curves-axiom"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75bb262279138550a603b35a73da944fcde987a321eb550c05276ce7b0a4e692"
+dependencies = [
+ "blake2b_simd",
+ "digest",
+ "ff 0.13.0",
+ "group 0.13.0",
+ "hex",
+ "lazy_static",
+ "maybe-rayon",
+ "num-bigint",
+ "num-traits",
+ "pairing 0.23.0",
+ "pasta_curves",
+ "paste",
+ "rand",
+ "rand_core",
+ "serde",
+ "serde_arrays",
+ "sha2",
+ "static_assertions",
+ "subtle",
+]
+
+[[package]]
 name = "halo2ecc-s"
 version = "0.3.2"
-source = "git+https://github.com/DelphinusLab/halo2ecc-s.git?tag=bisect-lookup-0.5.6#deba857a9f31dbf34d38a306b590fba96b0e9c1a"
+source = "git+https://github.com/lanbones/halo2ecc-s.git?tag=bisect-lookup-0.5.6#3b8b424f#3b8b424f009fd945fc982f530ed29b555f8002e6"
 dependencies = [
  "ark-std",
  "halo2_proofs",
@@ -1396,7 +1445,7 @@ dependencies = [
 [[package]]
 name = "halo2ecc-s"
 version = "0.3.2"
-source = "git+https://github.com/lanbones/halo2ecc-s.git?tag=bisect-lookup-0.5.6#3b8b424f#3b8b424f009fd945fc982f530ed29b555f8002e6"
+source = "git+https://github.com/fatcat22/halo2ecc-s.git?branch=yz/adapt_secp256r1_from_bisect-lookup-0.5.6#2a38add8e1d797ccac1e1e30ffa930ce58273d91"
 dependencies = [
  "ark-std",
  "halo2_proofs",
@@ -1447,6 +1496,9 @@ name = "hex"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "hmac"
@@ -1654,6 +1706,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "itertools"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1c173a5686ce8bfa551b3563d0c2170bf24ca44da99c7ca4bfdab5418c3fe57"
+dependencies = [
+ "either",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1701,6 +1762,9 @@ name = "lazy_static"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
+dependencies = [
+ "spin 0.5.2",
+]
 
 [[package]]
 name = "lazycell"
@@ -1813,6 +1877,16 @@ name = "matches"
 version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2532096657941c2fea9c289d370a250971c689d4f143798ff67113ec042024a5"
+
+[[package]]
+name = "maybe-rayon"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8ea1f30cedd69f0a2954655f7188c6a834246d2bcf1e315e2ac40c4b24dc9519"
+dependencies = [
+ "cfg-if 1.0.0",
+ "rayon",
+]
 
 [[package]]
 name = "md-5"
@@ -2018,9 +2092,9 @@ dependencies = [
 
 [[package]]
 name = "num-traits"
-version = "0.2.18"
+version = "0.2.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da0df0e5185db44f69b44f26786fe401b6c293d1907744beaa7fa62b2e5a517a"
+checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
 ]
@@ -2062,18 +2136,27 @@ version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "135590d8bdba2b31346f9cd1fb2a912329f5135e832a4f422942eb6ead8b6b3b"
 dependencies = [
- "group",
+ "group 0.12.1",
+]
+
+[[package]]
+name = "pairing"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "81fec4625e73cf41ef4bb6846cafa6d44736525f442ba45e407c4a000a13996f"
+dependencies = [
+ "group 0.13.0",
 ]
 
 [[package]]
 name = "pairing_bn256"
 version = "0.1.1"
-source = "git+https://github.com/lanbones/pairing#5ab08062f53cd29c946f96572aefdb688952d725"
+source = "git+https://github.com/fatcat22/pairing.git#aa6adcc0e5b60723eb4e03cde0e41c125a4ccce5"
 dependencies = [
  "bls12_381",
  "ec-gpu",
- "ff",
- "group",
+ "ff 0.12.1",
+ "group 0.12.1",
  "rand",
  "rand_core",
  "static_assertions",
@@ -2117,6 +2200,27 @@ checksum = "c705f256449c60da65e11ff6626e0c16a0a0b96aaa348de61376b249bc340f41"
 dependencies = [
  "regex",
 ]
+
+[[package]]
+name = "pasta_curves"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d3e57598f73cc7e1b2ac63c79c517b31a0877cd7c402cdcaa311b5208de7a095"
+dependencies = [
+ "blake2b_simd",
+ "ff 0.13.0",
+ "group 0.13.0",
+ "lazy_static",
+ "rand",
+ "static_assertions",
+ "subtle",
+]
+
+[[package]]
+name = "paste"
+version = "1.0.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
 name = "pbkdf2"
@@ -2473,7 +2577,7 @@ dependencies = [
  "cfg-if 1.0.0",
  "getrandom",
  "libc",
- "spin",
+ "spin 0.9.8",
  "untrusted",
  "windows-sys 0.52.0",
 ]
@@ -2687,6 +2791,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_arrays"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38636132857f68ec3d5f3eb121166d2af33cb55174c4d5ff645db6165cbef0fd"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "serde_bytes"
 version = "0.11.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2837,6 +2950,12 @@ dependencies = [
  "libc",
  "windows-sys 0.52.0",
 ]
+
+[[package]]
+name = "spin"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 
 [[package]]
 name = "spin"
@@ -3702,15 +3821,19 @@ dependencies = [
  "cfg-if 1.0.0",
  "circuits-batcher",
  "clap",
- "ff",
+ "ff 0.12.1",
+ "group 0.12.1",
  "halo2_proofs",
- "halo2ecc-s 0.3.2 (git+https://github.com/DelphinusLab/halo2ecc-s.git?tag=bisect-lookup-0.5.6)",
+ "halo2curves-axiom",
+ "halo2ecc-s 0.3.2 (git+https://github.com/fatcat22/halo2ecc-s.git?branch=yz/adapt_secp256r1_from_bisect-lookup-0.5.6)",
  "hex",
- "itertools",
+ "itertools 0.10.5",
  "lazy_static",
  "lru",
  "mongodb",
  "num-bigint",
+ "num-traits",
+ "paste",
  "poseidon",
  "rand",
  "rand_core",

@@ -3,11 +3,13 @@ pub mod babyjub;
 pub mod bits_arith;
 pub mod bls;
 pub mod bn256;
+pub mod ecdsa_verify;
 pub mod host;
 pub mod keccak256;
 pub mod merkle;
 pub mod poseidon;
 pub mod range;
+pub mod secp256r1;
 //pub(crate) mod keccak_arith_table;
 
 use crate::utils::{field_to_bn, field_to_u64, GateCell, Limb};

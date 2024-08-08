@@ -382,6 +382,10 @@ impl Bn256SumChip<Fr> {
         }
     }
 
+    /// ls:
+    /// index:       0    | 1 |  2 3 4 | 5 6 7 |       8       | 9 10 11  | 12 13 14 |       15           |
+    /// meaning: is_reset | a |   g_x  |  g_y  | g_is_identity | result_x | result_y | result_is_identity |
+    ///                        \_________ point g ____________/ \__________ point result ________________/
     pub fn load_bn256_sum_circuit(
         &self,
         ls: &Vec<Limb<Fr>>, // n * (new, fr , g1, sum)
