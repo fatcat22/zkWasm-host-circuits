@@ -232,6 +232,9 @@ fn enable_fq_permute(
     for i in 0..3 {
         let limb = fq.limbs_le[i].cell;
         let limb_assigned = get_cell_of_ctx(cells, &limb);
+        if let Some(v) = limb_assigned.value() {
+            assert_eq!(&input[i].value, v);
+        }
         region.constrain_equal(input[i].get_the_cell().cell(), limb_assigned.cell())?;
     }
     Ok(())
@@ -248,6 +251,9 @@ fn enable_g1affine_permute(
     enable_fq_permute(region, cells, &point.y, &inputs.next().unwrap().to_vec())?;
     let z_limb0 = point.z.0.cell;
     let z_limb0_assigned = get_cell_of_ctx(cells, &z_limb0);
+    if let Some(v) = z_limb0_assigned.value() {
+        assert_eq!(&input[6].value, v);
+    }
     region.constrain_equal(input[6].get_the_cell().cell(), z_limb0_assigned.cell())?;
     Ok(())
 }
@@ -484,6 +490,12 @@ impl Bn256SumChip<Fr> {
             // let sum_ret = ctx.ecc_add(&lhs, &rhs);
             // let sum_ret = ctx.ecc_reduce(&sum_ret);
             let sum_ret = ctx.ecc_reduce(&rhs);
+            assert_eq!(sum_ret.x.limbs_le[0].val, group.get(9).unwrap().value);
+            assert_eq!(sum_ret.x.limbs_le[1].val, group.get(10).unwrap().value);
+            assert_eq!(sum_ret.x.limbs_le[2].val, group.get(11).unwrap().value);
+            assert_eq!(sum_ret.y.limbs_le[0].val, group.get(12).unwrap().value);
+            assert_eq!(sum_ret.y.limbs_le[1].val, group.get(13).unwrap().value);
+            assert_eq!(sum_ret.y.limbs_le[2].val, group.get(14).unwrap().value);
 
             // ctx.0.ctx.borrow_mut().enable_permute(&sum_ret.z.0);
             // TODO: 应该用 base_integer_ctx 还是 scalar_integer_ctx?
@@ -797,6 +809,7 @@ mod circuits_test {
 
             let inputs = self.assign_input(&config.input, layouter.namespace(|| "assign input"))?;
 
+            chip.range_chip.init_table(&layouter)?;
             chip.load_bn256_sum_circuit(&inputs, &layouter)
         }
     }
@@ -804,22 +817,22 @@ mod circuits_test {
     #[test]
     fn test_prover() {
         // a=0x0000000000000000000000000000000000000000000000000000000000000002,
-        // g=(0x6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296, 0x4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5).
+        // g=(0x1174f35abf90caf9b068f41f74b2ed12238bd0fbc94ce6b6647ab281d465d55e, 0x7914cf3c0c1dad5689a6452795b32a5b3c9ebfdff6e593cb52b9bebe7466b539).
         // is_identity: false
-        // g*a=(0x7cf27b188d034f7e8a52380304b51ac3c08969e277f21b35a60b48fc47669978, 0x07775510db8ed040293d9ac69f7430dbba7dade63ce982299e04b79d227873d1).
+        // g*a=(0x0b583ee3bebf9de3a0cc60f023acbab556915d8fca9ddbb1743fc6a46332c330, 0xa393070ded418cf3a87c502db593e4081781652ac230f6a39e25b187010b5f8e).
         // is_identity: false
         let circuit = TestCircuit {
             a: Fr::from_str_vartime("2").unwrap(),
             g_x: split_biguint(
                 &BigUint::from_str_radix(
-                    "6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296",
+                    "1174f35abf90caf9b068f41f74b2ed12238bd0fbc94ce6b6647ab281d465d55e",
                     16,
                 )
                 .unwrap(),
             ),
             g_y: split_biguint(
                 &BigUint::from_str_radix(
-                    "4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+                    "7914cf3c0c1dad5689a6452795b32a5b3c9ebfdff6e593cb52b9bebe7466b539",
                     16,
                 )
                 .unwrap(),
@@ -827,14 +840,14 @@ mod circuits_test {
             g_is_identity: false,
             res_x: split_biguint(
                 &BigUint::from_str_radix(
-                    "7cf27b188d034f7e8a52380304b51ac3c08969e277f21b35a60b48fc47669978",
+                    "0b583ee3bebf9de3a0cc60f023acbab556915d8fca9ddbb1743fc6a46332c330",
                     16,
                 )
                 .unwrap(),
             ),
             res_y: split_biguint(
                 &BigUint::from_str_radix(
-                    "07775510db8ed040293d9ac69f7430dbba7dade63ce982299e04b79d227873d1",
+                    "a393070ded418cf3a87c502db593e4081781652ac230f6a39e25b187010b5f8e",
                     16,
                 )
                 .unwrap(),
