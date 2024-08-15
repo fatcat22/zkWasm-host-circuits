@@ -150,6 +150,21 @@ impl Fq {
     pub const fn size() -> usize {
         32
     }
+
+    /// Converts a 512-bit little endian integer into
+    /// an `Fq` by reducing by the modulus.
+    pub fn from_uniform_bytes(bytes: &[u8; 64]) -> Self {
+        Self::from_u512([
+            u64::from_le_bytes(bytes[0..8].try_into().unwrap()),
+            u64::from_le_bytes(bytes[8..16].try_into().unwrap()),
+            u64::from_le_bytes(bytes[16..24].try_into().unwrap()),
+            u64::from_le_bytes(bytes[24..32].try_into().unwrap()),
+            u64::from_le_bytes(bytes[32..40].try_into().unwrap()),
+            u64::from_le_bytes(bytes[40..48].try_into().unwrap()),
+            u64::from_le_bytes(bytes[48..56].try_into().unwrap()),
+            u64::from_le_bytes(bytes[56..64].try_into().unwrap()),
+        ])
+    }
 }
 
 impl halo2curves_axiom::ff::Field for Fq {
@@ -359,23 +374,6 @@ impl ff::PrimeField for Fq {
         ROOT_OF_UNITY
     }
 }
-
-// impl FromUniformBytes<64> for Fq {
-//     /// Converts a 512-bit little endian integer into
-//     /// an `Fq` by reducing by the modulus.
-//     fn from_uniform_bytes(bytes: &[u8; 64]) -> Self {
-//         Self::from_u512([
-//             u64::from_le_bytes(bytes[0..8].try_into().unwrap()),
-//             u64::from_le_bytes(bytes[8..16].try_into().unwrap()),
-//             u64::from_le_bytes(bytes[16..24].try_into().unwrap()),
-//             u64::from_le_bytes(bytes[24..32].try_into().unwrap()),
-//             u64::from_le_bytes(bytes[32..40].try_into().unwrap()),
-//             u64::from_le_bytes(bytes[40..48].try_into().unwrap()),
-//             u64::from_le_bytes(bytes[48..56].try_into().unwrap()),
-//             u64::from_le_bytes(bytes[56..64].try_into().unwrap()),
-//         ])
-//     }
-// }
 
 // impl WithSmallOrderMulGroup<3> for Fq {
 //     const ZETA: Self = ZETA;

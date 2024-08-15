@@ -3,9 +3,7 @@ mod curve_macro;
 mod fp;
 mod fq;
 
-// pub use curve::*;
-// pub use curve::G1Affine;
-pub use curve::Secp256r1Affine as G1Affine;
+pub use curve::{Secp256r1, Secp256r1Affine};
 pub use curve_macro::new_curve_impl;
 pub use fp::Fp;
 pub use fq::Fq;
