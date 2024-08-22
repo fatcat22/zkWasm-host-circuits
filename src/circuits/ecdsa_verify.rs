@@ -380,13 +380,18 @@ mod circuits_test {
     }
 
     #[derive(Debug, PartialEq, Default)]
-    struct TestCircuit {
+    struct ECDSAInput {
         pk_x: [Fr; 3],
         pk_y: [Fr; 3],
         pk_is_identity: bool,
         msg_hash: [Fr; 3],
         r: [Fr; 3],
         s: [Fr; 3],
+    }
+
+    #[derive(Debug, PartialEq, Default)]
+    struct TestCircuit {
+        inputs: Vec<ECDSAInput>,
     }
 
     impl TestCircuit {
@@ -405,91 +410,93 @@ mod circuits_test {
                         return Ok(Vec::new());
                     }
 
-                    for x in self.pk_x {
+                    for input in &self.inputs {
+                        for x in input.pk_x {
+                            let cell = Limb::new(
+                                Some(region.assign_advice(
+                                    || "pk_x",
+                                    input_column.clone(),
+                                    offset,
+                                    || Ok(x),
+                                )?),
+                                x,
+                            );
+                            offset += 1;
+                            result.push(cell);
+                        }
+
+                        for y in input.pk_y {
+                            let cell = Limb::new(
+                                Some(region.assign_advice(
+                                    || "pk_y",
+                                    input_column.clone(),
+                                    offset,
+                                    || Ok(y),
+                                )?),
+                                y,
+                            );
+                            offset += 1;
+                            result.push(cell);
+                        }
+
+                        let pk_is_identity = if input.pk_is_identity {
+                            Fr::one()
+                        } else {
+                            Fr::zero()
+                        };
                         let cell = Limb::new(
                             Some(region.assign_advice(
-                                || "pk_x",
+                                || "pk_is_identity",
                                 input_column.clone(),
                                 offset,
-                                || Ok(x),
+                                || Ok(pk_is_identity),
                             )?),
-                            x,
+                            pk_is_identity,
                         );
                         offset += 1;
                         result.push(cell);
-                    }
 
-                    for y in self.pk_y {
-                        let cell = Limb::new(
-                            Some(region.assign_advice(
-                                || "pk_y",
-                                input_column.clone(),
-                                offset,
-                                || Ok(y),
-                            )?),
-                            y,
-                        );
-                        offset += 1;
-                        result.push(cell);
-                    }
+                        for h in input.msg_hash {
+                            let cell = Limb::new(
+                                Some(region.assign_advice(
+                                    || "msg_hash",
+                                    input_column.clone(),
+                                    offset,
+                                    || Ok(h),
+                                )?),
+                                h,
+                            );
+                            offset += 1;
+                            result.push(cell);
+                        }
 
-                    let pk_is_identity = if self.pk_is_identity {
-                        Fr::one()
-                    } else {
-                        Fr::zero()
-                    };
-                    let cell = Limb::new(
-                        Some(region.assign_advice(
-                            || "pk_is_identity",
-                            input_column.clone(),
-                            offset,
-                            || Ok(pk_is_identity),
-                        )?),
-                        pk_is_identity,
-                    );
-                    offset += 1;
-                    result.push(cell);
+                        for r_i in input.r {
+                            let cell = Limb::new(
+                                Some(region.assign_advice(
+                                    || "r",
+                                    input_column.clone(),
+                                    offset,
+                                    || Ok(r_i),
+                                )?),
+                                r_i,
+                            );
+                            offset += 1;
+                            result.push(cell);
+                        }
 
-                    for h in self.msg_hash {
-                        let cell = Limb::new(
-                            Some(region.assign_advice(
-                                || "msg_hash",
-                                input_column.clone(),
-                                offset,
-                                || Ok(h),
-                            )?),
-                            h,
-                        );
-                        offset += 1;
-                        result.push(cell);
-                    }
-
-                    for r_i in self.r {
-                        let cell = Limb::new(
-                            Some(region.assign_advice(
-                                || "r",
-                                input_column.clone(),
-                                offset,
-                                || Ok(r_i),
-                            )?),
-                            r_i,
-                        );
-                        offset += 1;
-                        result.push(cell);
-                    }
-
-                    for s_i in self.s {
-                        let cell = Limb::new(
-                            Some(region.assign_advice(
-                                || "s_i",
-                                input_column.clone(),
-                                offset,
-                                || Ok(s_i),
-                            )?),
-                            s_i,
-                        );
-                        offset += 1;
-                        result.push(cell);
+                        for s_i in input.s {
+                            let cell = Limb::new(
+                                Some(region.assign_advice(
+                                    || "s_i",
+                                    input_column.clone(),
+                                    offset,
+                                    || Ok(s_i),
+                                )?),
+                                s_i,
+                            );
+                            offset += 1;
+                            result.push(cell);
+                        }
                     }
 
                     Ok(result)
@@ -542,55 +549,73 @@ mod circuits_test {
         secp256r1::Fq::from_uniform_bytes(&x_bytes)
     }
 
+    pub fn to_biguint<F: PrimeField>(f: &F) -> BigUint {
+        BigUint::from_str_radix(format!("{:?}", f).strip_prefix("0x").unwrap(), 16).unwrap()
+    }
+
+    pub fn modulus<F: PrimeField>() -> BigUint {
+        to_biguint(&-F::one()) + 1u64
+    }
+
     #[test]
     fn test_prover() {
-        const PK_X: &'static str =
-            "aa8dc881f03127a54e2e0f96213b2d7e4d43eb1462e457577149cb961520249e";
-        const PK_Y: &'static str =
-            "f1df988ab3fa2f6796d683fdedd8500aed2ab1eb2e94c6d1a0bd9f1be80cb524";
-        const MSG_HASH: &'static str =
-            "f57c13a4d90f9b859d96f734007124333344cc37fdb25554161e41e75a89a36a";
-        const R: &'static str = "7dc054cb09ec97c39c53e2356688ac76d83bdfb091d9c24126d49d355b2bd886";
-        const S: &'static str = "0fa6d3a61da64c530036ade71d701564e39c9fa42062d86c9f48cf420caf6f04";
+        let g = Secp256r1::generator();
 
-        {
-            let msg_hash = from_hex_str::<Fq>(MSG_HASH);
-            let r = from_hex_str::<Fq>(R);
-            let s = from_hex_str::<Fq>(S);
-            let g = Secp256r1::generator();
-            let pk_affine = Secp256r1Affine {
-                x: from_hex_str(PK_X),
-                y: from_hex_str(PK_Y),
-            };
-            let pk = pk_affine.to_curve();
+        let inputs = (0..26)
+            .into_iter()
+            .map(|_| {
+                let sk = Fq::rand();
+                let pk = Secp256r1Affine::from(g * sk);
+                let msg_hash = Fq::rand();
 
-            // let r_point = (msg_hash * s_inv) * g + (r * s_inv) * pk
-            // assert_eq!(r_point.x, r);
+                let k = Fq::rand();
+                let k_inv = k.invert().unwrap();
 
-            let s_inv = s.invert().unwrap();
-            let u_1 = msg_hash * s_inv;
-            let u_2 = r * s_inv;
+                let r_point = Secp256r1Affine::from(g * k).coordinates().unwrap();
+                let x = r_point.x();
+                let x_bigint = to_biguint(x);
+                let r = from_hex_str::<Fq>(&format!("{:x}", x_bigint % modulus::<Fq>()));
+                let s = k_inv * (msg_hash + (r * sk));
 
-            let v_1 = g * u_1;
-            let v_2 = pk * u_2;
+                let input = ECDSAInput {
+                    pk_x: split_biguint(&to_biguint(&pk.x)),
+                    pk_y: split_biguint(&to_biguint(&pk.y)),
+                    pk_is_identity: false,
 
-            let r_point = (v_1 + v_2).to_affine().coordinates().unwrap();
-            println!("r_point.x:{:?}\nr:{:?}", r_point.x(), r);
-            let x_candidate = r_point.x();
-            let r_candidate = mod_n(x_candidate);
+                    msg_hash: split_biguint(&to_biguint(&msg_hash)),
+                    r: split_biguint(&to_biguint(&r)),
+                    s: split_biguint(&to_biguint(&s)),
+                };
 
-            assert_eq!(r, r_candidate);
-        }
+                // check input data
+                // let r_point = (msg_hash * s_inv) * g + (r * s_inv) * pk
+                // assert_eq!(r_point.x, r);
+                {
+                    println!("r: {:?}", r);
+                    println!("s: {:?}", s);
+                    println!("msghash: {:?}", msg_hash);
+                    println!("pk: {:?}", pk);
 
-        let circuit = TestCircuit {
-            pk_x: split_biguint(&BigUint::from_str_radix(PK_X, 16).unwrap()),
-            pk_y: split_biguint(&BigUint::from_str_radix(PK_Y, 16).unwrap()),
-            pk_is_identity: false,
+                    let pk = pk.to_curve();
+                    let s_inv = s.invert().unwrap();
+                    let u_1 = msg_hash * s_inv;
+                    let u_2 = r * s_inv;
 
-            msg_hash: split_biguint(&BigUint::from_str_radix(MSG_HASH, 16).unwrap()),
-            r: split_biguint(&BigUint::from_str_radix(R, 16).unwrap()),
-            s: split_biguint(&BigUint::from_str_radix(S, 16).unwrap()),
-        };
+                    let v_1 = g * u_1;
+                    let v_2 = pk * u_2;
+
+                    let r_point = (v_1 + v_2).to_affine().coordinates().unwrap();
+                    let x_candidate = r_point.x();
+                    let r_candidate = mod_n(x_candidate);
+
+                    assert_eq!(r, r_candidate);
+                }
+
+                input
+            })
+            .collect();
+
+        let circuit = TestCircuit { inputs };
 
         let prover = MockProver::run(23, &circuit, Vec::new()).unwrap();
         assert_eq!(prover.verify(), Ok(()));
