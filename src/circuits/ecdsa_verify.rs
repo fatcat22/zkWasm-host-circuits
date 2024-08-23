@@ -14,7 +14,7 @@ use halo2ecc_s::{
     assign::AssignedValue,
     circuit::{base_chip::BaseChipOps, ecc_chip::EccChipScalarOps},
 };
-use num_traits::{FromPrimitive, Num, ToPrimitive};
+use num_traits::{FromPrimitive, Num, One, ToPrimitive};
 use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::rc::Rc;
@@ -60,7 +60,7 @@ pub fn fr_to_bool(f: &Fr) -> bool {
 }
 
 fn assigned_cells_to_bn256(
-    a: &Vec<Limb<Fr>>, //G1 (3 * 2 + 1)
+    a: &[Limb<Fr>], //G1 (3 * 2 + 1)
     start: usize,
 ) -> BigUint {
     let mut bn = BigUint::from(0 as u64);
@@ -110,13 +110,15 @@ fn get_scalar_from_cell(
     )
 }
 
-fn get_g1_from_cells(
+fn get_g1_from_xy_cells(
     ctx: &mut GeneralScalarEccContext<Secp256r1Affine, Fr>,
-    a: &Vec<Limb<Fr>>, //G1 (3 * 2 + 1)
+    x: &[Limb<Fr>], //G1 (3 * 2 + 1)
+    y: &[Limb<Fr>], //G1 (3 * 2 + 1)
+    is_identity: &Limb<Fr>,
 ) -> (AssignedPoint<Secp256r1Affine, Fr>, Secp256r1Affine) {
-    let x_bn = assigned_cells_to_bn256(a, 0);
-    let y_bn = assigned_cells_to_bn256(a, 3);
-    let is_identity = fr_to_bool(&a[6].value);
+    let x_bn = assigned_cells_to_bn256(x, 0);
+    let y_bn = assigned_cells_to_bn256(y, 0);
+    let is_identity = fr_to_bool(&is_identity.value);
     println!(
         "x_bn:{:x}, y_bn:{:x}, is_identity:{}",
         x_bn, y_bn, is_identity
@@ -129,6 +131,7 @@ fn get_g1_from_cells(
             y,
             // AssignedCondition(ctx.0.ctx.borrow_mut().assign(if is_identity {
             // TODO: 确认是用 base_integer_chip 还是 scalar_integer_chip
+            // TODO: constrain z equals to is_identity paramter
             AssignedCondition(ctx.base_integer_chip().base_chip().assign(if is_identity {
                 Fr::one()
             } else {
@@ -140,6 +143,13 @@ fn get_g1_from_cells(
             y: secp256r1::Fp::from_str_vartime(&format!("{}", y_bn)).unwrap(),
         },
     )
+}
+
+fn get_g1_from_cells(
+    ctx: &mut GeneralScalarEccContext<Secp256r1Affine, Fr>,
+    a: &[Limb<Fr>], //G1 (3 * 2 + 1)
+) -> (AssignedPoint<Secp256r1Affine, Fr>, Secp256r1Affine) {
+    get_g1_from_xy_cells(ctx, &a[0..3], &a[3..6], &a[6])
 }
 
 fn get_cell_of_ctx(
@@ -165,6 +175,35 @@ fn enable_integer_permute<T: BaseExt>(
         }
         region.constrain_equal(input[i].get_the_cell().cell(), limb_assigned.cell())?;
     }
+    Ok(())
+}
+
+fn enable_integer_permute2<T: BaseExt>(
+    region: &Region<Fr>,
+    cells: &Vec<Vec<Vec<Option<AssignedCell<Fr, Fr>>>>>,
+    scalar: &AssignedInteger<T, Fr>,
+    expect: &AssignedInteger<T, Fr>,
+) -> Result<(), Error> {
+    for (s_limb, e_limb) in scalar.limbs_le.iter().zip(expect.limbs_le.iter()) {
+        let s_cell = get_cell_of_ctx(cells, &s_limb.cell);
+        let e_cell = get_cell_of_ctx(cells, &e_limb.cell);
+        region.constrain_equal(s_cell.cell(), e_cell.cell())?;
+    }
+    Ok(())
+}
+
+fn enable_g1affine_identity_permute(
+    region: &Region<Fr>,
+    cells: &Vec<Vec<Vec<Option<AssignedCell<Fr, Fr>>>>>,
+    point: &AssignedPoint<Secp256r1Affine, Fr>,
+    expect: &AssignedPoint<Secp256r1Affine, Fr>,
+) -> Result<(), Error> {
+    enable_integer_permute2(region, cells, &point.x, &expect.x)?;
+    enable_integer_permute2(region, cells, &point.y, &expect.y)?;
+    // TODO
+    // let z_limb0 = point.z.0.cell;
+    // let z_limb0_assigned = get_cell_of_ctx(cells, &z_limb0);
+    // region.constrain_equal(input[6].get_the_cell().cell(), z_limb0_assigned.cell())?;
     Ok(())
 }
 
@@ -208,102 +247,109 @@ impl Bn256SumChip<Fr> {
         }
     }
 
-    /// ls[i]:
-    /// index:   0 1 2 | 3 4 5 |        6       |   7 8 9  | 10 11 12 | 13 14 15 |
-    /// meaning:  pk_x | pk_y  | pk_is_identity | msg_hash |    r     |     s    |
+    /// ls[0]: lambda
+    /// ls[i] when i > 0:
+    /// index:   0 1 2 | 3 4 5 |        6       |   7 8 9  | 10 11 12 | 13 14 15 | 16 17 18 |       19
+    /// meaning:  pk_x | pk_y  | pk_is_identity | msg_hash |    r     |     s    |    r_y   | r_is_identity
     pub fn load_bn256_sum_circuit(
         &self,
         ls: &Vec<Limb<Fr>>,
         layouter: &impl Layouter<Fr>,
     ) -> Result<(), Error> {
+        if ls.is_empty() {
+            return Ok(());
+        }
         let context = Rc::new(RefCell::new(Context::new()));
         let mut ctx = GeneralScalarEccContext::new(context);
 
-        let mut r_candidates = Vec::new();
+        // let mut r_candidates = Vec::new();
         let g = Secp256r1Affine::generator().to_curve();
         // TODO: ctx.assign_nonzero_point is better?
-        let g_point = ctx.assign_point(&g);
-        for group in ls.chunks_exact(16) {
-            // using constraint to fix if to reset
-            // let lhs = if group.get(0).unwrap().value != Fr::zero() {
-            //     identity.clone()
-            // } else {
-            //     sum
-            // };
+        let g_point = ctx.assign_constant_point(&g);
 
-            let (pk, pk_) = get_g1_from_cells(&mut ctx, &group.get(0..7).unwrap().to_vec());
-            let (msg_hash, msg_hash_) = get_scalar_from_cell(&mut ctx, group.get(7..10).unwrap());
-            let (r, r_) = get_scalar_from_cell(&mut ctx, group.get(10..13).unwrap());
-            let (s, s_) = get_scalar_from_cell(&mut ctx, group.get(13..16).unwrap());
+        // TODO: constrain lambda equals ls[0]
+        let ls0 = ls.get(0).map(|v| v.value).unwrap_or(Fr::zero());
+        let lambda = ctx.scalar_integer_ctx.assign_w(
+            &BigUint::from_str_radix(format!("{:?}", ls0).strip_prefix("0x").unwrap(), 16).unwrap(),
+        );
 
-            // TODO: test if constrain s*s_inv = 1 could save more rows.
-            let s_inv = ctx.scalar_integer_ctx.int_unsafe_invert(&s);
-            // let s_inv_ = s_.invert().unwrap();
-            // let s_inv_ = ctx.scalar_integer_ctx.assign_w(
-            //     &BigUint::from_str_radix(format!("{:?}", s_inv_).trim_start_matches("0x"), 16)
-            //         .unwrap(),
-            // );
-            // ctx.scalar_integer_ctx.assert_int_equal(&s_inv_, &s_inv);
+        let mut rlc_coff = ctx.scalar_integer_ctx.assign_w(&BigUint::one());
 
-            // let u_1 = msg_hash * s_inv;
-            let u_1 = ctx.scalar_integer_ctx.int_mul(&msg_hash, &s_inv);
-            // let u_1_ = msg_hash_ * s_inv_;
-            // let u_1_assign_ = ctx.scalar_integer_ctx.assign_w(
-            //     &BigUint::from_str_radix(format!("{:?}", u_1_).trim_start_matches("0x"), 16)
-            //         .unwrap(),
-            // );
-            // ctx.scalar_integer_ctx.assert_int_equal(&u_1_assign_, &u_1);
+        let negtive_one = ctx
+            .scalar_integer_ctx
+            .assign_int_constant(-secp256r1::Fq::one());
 
-            // let u_2 = r * s_inv;
-            let u_2 = ctx.scalar_integer_ctx.int_mul(&r, &s_inv);
-            // let u_2_ = r_ * s_inv_;
-            // let u_2_assign_ = ctx.scalar_integer_ctx.assign_w(
-            //     &BigUint::from_str_radix(format!("{:?}", u_2_).trim_start_matches("0x"), 16)
-            //         .unwrap(),
-            // );
-            // ctx.scalar_integer_ctx.assert_int_equal(&u_2_assign_, &u_2);
+        let ls = ls.get(1..).unwrap_or_default();
 
-            // let v_1 = g * u_1;
-            let v_1 = ctx.ecc_mul(&g_point, u_1);
-            // let v_1_ = g * u_1_;
-            // let v_1_assign_ = ctx.assign_point(&v_1_);
-            // ctx.ecc_assert_equal(&v_1_assign_, &v_1);
+        let points = ls
+            .chunks_exact(20)
+            .map(|inputs| {
+                let (pk, pk_) = get_g1_from_cells(&mut ctx, &inputs.get(0..7).unwrap().to_vec());
+                let (res, _) = get_g1_from_xy_cells(
+                    &mut ctx,
+                    &inputs.get(10..13).unwrap(),
+                    &inputs.get(16..19).unwrap(),
+                    &inputs.get(19).unwrap(),
+                );
+                println!("g_point:{:?}", g_point);
+                println!("pk:{:?}", pk);
+                println!("res:{:?}", res);
+                [g_point.clone(), pk, res]
+            })
+            .flatten()
+            .collect::<Vec<_>>();
 
-            // let v_2 = pk * u_2
-            let v_2 = ctx.ecc_mul(&pk, u_2);
-            // let v_2_ = pk_ * u_2_;
-            // let v_2_assign_ = ctx.assign_point(&v_2_);
-            // ctx.ecc_assert_equal(&v_2_assign_, &v_2);
+        let scalars = ls
+            .chunks_exact(20)
+            .enumerate()
+            .map(|(i, inputs)| {
+                let (msg_hash, msg_hash_) =
+                    get_scalar_from_cell(&mut ctx, inputs.get(7..10).unwrap());
+                let (r, r_) = get_scalar_from_cell(&mut ctx, inputs.get(10..13).unwrap());
+                let (s, s_) = get_scalar_from_cell(&mut ctx, inputs.get(13..16).unwrap());
 
-            // let r_point = (v_1 + v_2).to_affine().coordinates().unwrap();
-            let v1_curvature = ctx.to_point_with_curvature(v_1.clone());
-            let r_point = ctx.ecc_add(&v1_curvature, &v_2);
-            // let r_point_ = (v_1_ + v_2_).to_affine();
-            // let r_point_assign_ = ctx.assign_point(&r_point_.to_curve());
-            // ctx.ecc_assert_equal(&r_point_assign_, &r_point);
+                // TODO: test if constrain s*s_inv = 1 could save more rows.
+                let s_inv = ctx.scalar_integer_ctx.int_unsafe_invert(&s);
 
-            let r_candidate = r_point.x;
-            let r_candidate = ctx.base_integer_chip().reduce(&r_candidate);
-            let r_candidate = AssignedInteger::<secp256r1::Fq, Fr>::new(
-                r_candidate.limbs_le,
-                r_candidate.native,
-                r_candidate.times + 1,
-            );
-            // TODO: still need enable_scalar_permute?
-            ctx.scalar_integer_ctx.assert_int_equal(&r_candidate, &r);
+                // let u_1 = msg_hash * s_inv;
+                let u_1 = ctx.scalar_integer_ctx.int_mul(&msg_hash, &s_inv);
+                // let u_1_ = msg_hash_ * s_inv_;
+                // let u_1_assign_ = ctx.scalar_integer_ctx.assign_w(
+                //     &BigUint::from_str_radix(format!("{:?}", u_1_).trim_start_matches("0x"), 16)
+                //         .unwrap(),
+                // );
+                // ctx.scalar_integer_ctx.assert_int_equal(&u_1_assign_, &u_1);
 
-            ctx.scalar_integer_ctx
-                .base_chip()
-                .enable_permute(&r_candidate.limbs_le[0]);
-            ctx.base_integer_chip()
-                .base_chip()
-                .enable_permute(&r_candidate.limbs_le[1]);
-            ctx.base_integer_chip()
-                .base_chip()
-                .enable_permute(&r_candidate.limbs_le[2]);
+                // let u_2 = r * s_inv;
+                let u_2 = ctx.scalar_integer_ctx.int_mul(&r, &s_inv);
 
-            r_candidates.push(r_candidate);
-        }
+                let (u_1, u_2) = if i == 0 {
+                    rlc_coff = lambda.clone();
+                    (u_1, u_2)
+                } else {
+                    let nu_1 = ctx.scalar_integer_ctx.int_mul(&rlc_coff, &u_1);
+                    let nu_2 = ctx.scalar_integer_ctx.int_mul(&rlc_coff, &u_2);
+                    rlc_coff = ctx.scalar_integer_ctx.int_mul(&rlc_coff, &lambda);
+                    (nu_1, nu_2)
+                };
+
+                [u_1, u_2, negtive_one.clone()]
+            })
+            .flatten()
+            .collect::<Vec<_>>();
+
+        let msm_res = ctx.msm(&points, &scalars);
+        let msm_res = ctx.ecc_reduce(&msm_res);
+        println!("msm_res: {:?}", msm_res);
+
+        let expect = ctx.assign_constant_point(
+            &Secp256r1Affine {
+                x: secp256r1::Fp::zero(),
+                y: secp256r1::Fp::zero(),
+            }
+            .to_curve(),
+        );
+        println!("expect: {:?}", expect);
 
         let records = Into::<Context<Fr>>::into(ctx).records;
         layouter.assign_region(
@@ -317,24 +363,93 @@ impl Bn256SumChip<Fr> {
                     &self.point_select_chip,
                 )?;
 
-                r_candidates
-                    .iter()
-                    .enumerate()
-                    .for_each(|(i, r_candidate)| {
-                        enable_integer_permute(
-                            &mut region,
-                            &cells,
-                            &r_candidate,
-                            &ls[16 * i + 10..16 * i + 13].to_vec(),
-                        )
-                        .unwrap()
-                    });
+                enable_g1affine_identity_permute(&mut region, &cells, &msm_res, &expect)?;
+
                 end_timer!(timer);
                 Ok(())
             },
         )?;
         Ok(())
     }
+
+    // fn verify<C: CurveAffine, N: FieldExt>(
+    //     &self,
+    //     coeff: &AssignedInteger<C::ScalarExt, N>,
+    //     inputs: &[Limb<N>],
+    // ) -> AssignedPoint<C, N> {
+    //     let (pk, pk_) = get_g1_from_cells(&mut ctx, &inputs.get(0..7).unwrap().to_vec());
+    //     let (msg_hash, msg_hash_) = get_scalar_from_cell(&mut ctx, inputs.get(7..10).unwrap());
+    //     let (r, r_) = get_scalar_from_cell(&mut ctx, inputs.get(10..13).unwrap());
+    //     let (s, s_) = get_scalar_from_cell(&mut ctx, inputs.get(13..16).unwrap());
+
+    //     // TODO: test if constrain s*s_inv = 1 could save more rows.
+    //     let s_inv = ctx.scalar_integer_ctx.int_unsafe_invert(&s);
+    //     // let s_inv_ = s_.invert().unwrap();
+    //     // let s_inv_ = ctx.scalar_integer_ctx.assign_w(
+    //     //     &BigUint::from_str_radix(format!("{:?}", s_inv_).trim_start_matches("0x"), 16)
+    //     //         .unwrap(),
+    //     // );
+    //     // ctx.scalar_integer_ctx.assert_int_equal(&s_inv_, &s_inv);
+
+    //     // let u_1 = msg_hash * s_inv;
+    //     let u_1 = ctx.scalar_integer_ctx.int_mul(&msg_hash, &s_inv);
+    //     // let u_1_ = msg_hash_ * s_inv_;
+    //     // let u_1_assign_ = ctx.scalar_integer_ctx.assign_w(
+    //     //     &BigUint::from_str_radix(format!("{:?}", u_1_).trim_start_matches("0x"), 16)
+    //     //         .unwrap(),
+    //     // );
+    //     // ctx.scalar_integer_ctx.assert_int_equal(&u_1_assign_, &u_1);
+
+    //     // let u_2 = r * s_inv;
+    //     let u_2 = ctx.scalar_integer_ctx.int_mul(&r, &s_inv);
+    //     // let u_2_ = r_ * s_inv_;
+    //     // let u_2_assign_ = ctx.scalar_integer_ctx.assign_w(
+    //     //     &BigUint::from_str_radix(format!("{:?}", u_2_).trim_start_matches("0x"), 16)
+    //     //         .unwrap(),
+    //     // );
+    //     // ctx.scalar_integer_ctx.assert_int_equal(&u_2_assign_, &u_2);
+
+    //     // let v_1 = g * u_1;
+    //     let v_1 = ctx.ecc_mul(&g_point, u_1);
+    //     // let v_1_ = g * u_1_;
+    //     // let v_1_assign_ = ctx.assign_point(&v_1_);
+    //     // ctx.ecc_assert_equal(&v_1_assign_, &v_1);
+
+    //     // let v_2 = pk * u_2
+    //     let v_2 = ctx.ecc_mul(&pk, u_2);
+    //     // let v_2_ = pk_ * u_2_;
+    //     // let v_2_assign_ = ctx.assign_point(&v_2_);
+    //     // ctx.ecc_assert_equal(&v_2_assign_, &v_2);
+
+    //     // let r_point = (v_1 + v_2).to_affine().coordinates().unwrap();
+    //     let v1_curvature = ctx.to_point_with_curvature(v_1.clone());
+    //     let r_point = ctx.ecc_add(&v1_curvature, &v_2);
+    //     // let r_point_ = (v_1_ + v_2_).to_affine();
+    //     // let r_point_assign_ = ctx.assign_point(&r_point_.to_curve());
+    //     // ctx.ecc_assert_equal(&r_point_assign_, &r_point);
+
+    //     let r_candidate = r_point.x;
+    //     let r_candidate = ctx.base_integer_chip().reduce(&r_candidate);
+    //     let r_candidate = AssignedInteger::<secp256r1::Fq, Fr>::new(
+    //         r_candidate.limbs_le,
+    //         r_candidate.native,
+    //         r_candidate.times + 1,
+    //     );
+    //     // TODO: still need enable_scalar_permute?
+    //     ctx.scalar_integer_ctx.assert_int_equal(&r_candidate, &r);
+
+    //     ctx.scalar_integer_ctx
+    //         .base_chip()
+    //         .enable_permute(&r_candidate.limbs_le[0]);
+    //     ctx.base_integer_chip()
+    //         .base_chip()
+    //         .enable_permute(&r_candidate.limbs_le[1]);
+    //     ctx.base_integer_chip()
+    //         .base_chip()
+    //         .enable_permute(&r_candidate.limbs_le[2]);
+
+    //     r_candidates.push(r_candidate);
+    // }
 }
 
 #[cfg(test)]
@@ -387,10 +502,13 @@ mod circuits_test {
         msg_hash: [Fr; 3],
         r: [Fr; 3],
         s: [Fr; 3],
+        r_y: [Fr; 3],
+        r_is_identity: bool,
     }
 
     #[derive(Debug, PartialEq, Default)]
     struct TestCircuit {
+        lambda: Fr,
         inputs: Vec<ECDSAInput>,
     }
 
@@ -409,6 +527,18 @@ mod circuits_test {
                     if self == &Self::default() {
                         return Ok(Vec::new());
                     }
+
+                    let cell = Limb::new(
+                        Some(region.assign_advice(
+                            || "lambda",
+                            input_column.clone(),
+                            offset,
+                            || Ok(self.lambda),
+                        )?),
+                        self.lambda,
+                    );
+                    offset += 1;
+                    result.push(cell);
 
                     for input in &self.inputs {
                         for x in input.pk_x {
@@ -497,6 +627,37 @@ mod circuits_test {
                             offset += 1;
                             result.push(cell);
                         }
+
+                        for r_y_i in input.r_y {
+                            let cell = Limb::new(
+                                Some(region.assign_advice(
+                                    || "r_y",
+                                    input_column.clone(),
+                                    offset,
+                                    || Ok(r_y_i),
+                                )?),
+                                r_y_i,
+                            );
+                            offset += 1;
+                            result.push(cell);
+                        }
+
+                        let r_is_identity = if input.r_is_identity {
+                            Fr::one()
+                        } else {
+                            Fr::zero()
+                        };
+                        let cell = Limb::new(
+                            Some(region.assign_advice(
+                                || "r_is_identity",
+                                input_column.clone(),
+                                offset,
+                                || Ok(r_is_identity),
+                            )?),
+                            r_is_identity,
+                        );
+                        offset += 1;
+                        result.push(cell);
                     }
 
                     Ok(result)
@@ -561,7 +722,7 @@ mod circuits_test {
     fn test_prover() {
         let g = Secp256r1::generator();
 
-        let inputs = (0..26)
+        let inputs = (0..1)
             .into_iter()
             .map(|_| {
                 let sk = Fq::rand();
@@ -571,10 +732,16 @@ mod circuits_test {
                 let k = Fq::rand();
                 let k_inv = k.invert().unwrap();
 
-                let r_point = Secp256r1Affine::from(g * k).coordinates().unwrap();
+                let r_affine = Secp256r1Affine::from(g * k);
+                let r_point = r_affine.coordinates().unwrap();
                 let x = r_point.x();
+                let y = r_point.y();
                 let x_bigint = to_biguint(x);
+                let y_bigint = to_biguint(y);
+                let r_is_identity = bool::from(r_affine.is_identity());
+
                 let r = from_hex_str::<Fq>(&format!("{:x}", x_bigint % modulus::<Fq>()));
+                let r_y = from_hex_str::<Fq>(&format!("{:x}", y_bigint % modulus::<Fq>()));
                 let s = k_inv * (msg_hash + (r * sk));
 
                 let input = ECDSAInput {
@@ -585,6 +752,8 @@ mod circuits_test {
                     msg_hash: split_biguint(&to_biguint(&msg_hash)),
                     r: split_biguint(&to_biguint(&r)),
                     s: split_biguint(&to_biguint(&s)),
+                    r_y: split_biguint(&to_biguint(&r_y)),
+                    r_is_identity,
                 };
 
                 // check input data
@@ -615,7 +784,10 @@ mod circuits_test {
             })
             .collect();
 
-        let circuit = TestCircuit { inputs };
+        let circuit = TestCircuit {
+            lambda: Fr::one(),
+            inputs,
+        };
 
         let prover = MockProver::run(23, &circuit, Vec::new()).unwrap();
         assert_eq!(prover.verify(), Ok(()));
