@@ -161,6 +161,21 @@ fn get_cell_of_ctx(
         .unwrap()
 }
 
+fn enable_point_permute(
+    ctx: &mut GeneralScalarEccContext<Secp256r1Affine, Fr>,
+    point: &AssignedPoint<Secp256r1Affine, Fr>,
+) {
+    for limb in &point.x.limbs_le {
+        ctx.base_integer_chip().base_chip().enable_permute(&limb);
+    }
+    for limb in &point.y.limbs_le {
+        ctx.base_integer_chip().base_chip().enable_permute(&limb);
+    }
+    ctx.base_integer_chip()
+        .base_chip()
+        .enable_permute(&point.z.0);
+}
+
 fn enable_integer_permute<T: BaseExt>(
     region: &Region<Fr>,
     cells: &Vec<Vec<Vec<Option<AssignedCell<Fr, Fr>>>>>,
@@ -340,6 +355,7 @@ impl Bn256SumChip<Fr> {
 
         let msm_res = ctx.msm(&points, &scalars);
         let msm_res = ctx.ecc_reduce(&msm_res);
+        enable_point_permute(&mut ctx, &msm_res);
         println!("msm_res: {:?}", msm_res);
 
         let expect = ctx.assign_constant_point(
@@ -349,6 +365,7 @@ impl Bn256SumChip<Fr> {
             }
             .to_curve(),
         );
+        enable_point_permute(&mut ctx, &expect);
         println!("expect: {:?}", expect);
 
         let records = Into::<Context<Fr>>::into(ctx).records;
