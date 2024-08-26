@@ -339,16 +339,18 @@ impl Bn256SumChip<Fr> {
                 let u_2 = ctx.scalar_integer_ctx.int_mul(&r, &s_inv);
 
                 let (u_1, u_2) = if i == 0 {
-                    rlc_coff = lambda.clone();
                     (u_1, u_2)
                 } else {
                     let nu_1 = ctx.scalar_integer_ctx.int_mul(&rlc_coff, &u_1);
                     let nu_2 = ctx.scalar_integer_ctx.int_mul(&rlc_coff, &u_2);
-                    rlc_coff = ctx.scalar_integer_ctx.int_mul(&rlc_coff, &lambda);
+
                     (nu_1, nu_2)
                 };
+                let rhs_coff = ctx.scalar_integer_ctx.int_mul(&rlc_coff, &negtive_one);
 
-                [u_1, u_2, negtive_one.clone()]
+                rlc_coff = ctx.scalar_integer_ctx.int_mul(&rlc_coff, &lambda);
+
+                [u_1, u_2, rhs_coff]
             })
             .flatten()
             .collect::<Vec<_>>();
@@ -388,85 +390,6 @@ impl Bn256SumChip<Fr> {
         )?;
         Ok(())
     }
-
-    // fn verify<C: CurveAffine, N: FieldExt>(
-    //     &self,
-    //     coeff: &AssignedInteger<C::ScalarExt, N>,
-    //     inputs: &[Limb<N>],
-    // ) -> AssignedPoint<C, N> {
-    //     let (pk, pk_) = get_g1_from_cells(&mut ctx, &inputs.get(0..7).unwrap().to_vec());
-    //     let (msg_hash, msg_hash_) = get_scalar_from_cell(&mut ctx, inputs.get(7..10).unwrap());
-    //     let (r, r_) = get_scalar_from_cell(&mut ctx, inputs.get(10..13).unwrap());
-    //     let (s, s_) = get_scalar_from_cell(&mut ctx, inputs.get(13..16).unwrap());
-
-    //     // TODO: test if constrain s*s_inv = 1 could save more rows.
-    //     let s_inv = ctx.scalar_integer_ctx.int_unsafe_invert(&s);
-    //     // let s_inv_ = s_.invert().unwrap();
-    //     // let s_inv_ = ctx.scalar_integer_ctx.assign_w(
-    //     //     &BigUint::from_str_radix(format!("{:?}", s_inv_).trim_start_matches("0x"), 16)
-    //     //         .unwrap(),
-    //     // );
-    //     // ctx.scalar_integer_ctx.assert_int_equal(&s_inv_, &s_inv);
-
-    //     // let u_1 = msg_hash * s_inv;
-    //     let u_1 = ctx.scalar_integer_ctx.int_mul(&msg_hash, &s_inv);
-    //     // let u_1_ = msg_hash_ * s_inv_;
-    //     // let u_1_assign_ = ctx.scalar_integer_ctx.assign_w(
-    //     //     &BigUint::from_str_radix(format!("{:?}", u_1_).trim_start_matches("0x"), 16)
-    //     //         .unwrap(),
-    //     // );
-    //     // ctx.scalar_integer_ctx.assert_int_equal(&u_1_assign_, &u_1);
-
-    //     // let u_2 = r * s_inv;
-    //     let u_2 = ctx.scalar_integer_ctx.int_mul(&r, &s_inv);
-    //     // let u_2_ = r_ * s_inv_;
-    //     // let u_2_assign_ = ctx.scalar_integer_ctx.assign_w(
-    //     //     &BigUint::from_str_radix(format!("{:?}", u_2_).trim_start_matches("0x"), 16)
-    //     //         .unwrap(),
-    //     // );
-    //     // ctx.scalar_integer_ctx.assert_int_equal(&u_2_assign_, &u_2);
-
-    //     // let v_1 = g * u_1;
-    //     let v_1 = ctx.ecc_mul(&g_point, u_1);
-    //     // let v_1_ = g * u_1_;
-    //     // let v_1_assign_ = ctx.assign_point(&v_1_);
-    //     // ctx.ecc_assert_equal(&v_1_assign_, &v_1);
-
-    //     // let v_2 = pk * u_2
-    //     let v_2 = ctx.ecc_mul(&pk, u_2);
-    //     // let v_2_ = pk_ * u_2_;
-    //     // let v_2_assign_ = ctx.assign_point(&v_2_);
-    //     // ctx.ecc_assert_equal(&v_2_assign_, &v_2);
-
-    //     // let r_point = (v_1 + v_2).to_affine().coordinates().unwrap();
-    //     let v1_curvature = ctx.to_point_with_curvature(v_1.clone());
-    //     let r_point = ctx.ecc_add(&v1_curvature, &v_2);
-    //     // let r_point_ = (v_1_ + v_2_).to_affine();
-    //     // let r_point_assign_ = ctx.assign_point(&r_point_.to_curve());
-    //     // ctx.ecc_assert_equal(&r_point_assign_, &r_point);
-
-    //     let r_candidate = r_point.x;
-    //     let r_candidate = ctx.base_integer_chip().reduce(&r_candidate);
-    //     let r_candidate = AssignedInteger::<secp256r1::Fq, Fr>::new(
-    //         r_candidate.limbs_le,
-    //         r_candidate.native,
-    //         r_candidate.times + 1,
-    //     );
-    //     // TODO: still need enable_scalar_permute?
-    //     ctx.scalar_integer_ctx.assert_int_equal(&r_candidate, &r);
-
-    //     ctx.scalar_integer_ctx
-    //         .base_chip()
-    //         .enable_permute(&r_candidate.limbs_le[0]);
-    //     ctx.base_integer_chip()
-    //         .base_chip()
-    //         .enable_permute(&r_candidate.limbs_le[1]);
-    //     ctx.base_integer_chip()
-    //         .base_chip()
-    //         .enable_permute(&r_candidate.limbs_le[2]);
-
-    //     r_candidates.push(r_candidate);
-    // }
 }
 
 #[cfg(test)]
@@ -739,7 +662,7 @@ mod circuits_test {
     fn test_prover() {
         let g = Secp256r1::generator();
 
-        let inputs = (0..1)
+        let inputs = (0..340)
             .into_iter()
             .map(|_| {
                 let sk = Fq::rand();
@@ -802,7 +725,7 @@ mod circuits_test {
             .collect();
 
         let circuit = TestCircuit {
-            lambda: Fr::one(),
+            lambda: Fr::rand(),
             inputs,
         };
 
