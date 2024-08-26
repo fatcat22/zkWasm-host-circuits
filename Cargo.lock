@@ -1445,7 +1445,7 @@ dependencies = [
 [[package]]
 name = "halo2ecc-s"
 version = "0.3.2"
-source = "git+https://github.com/fatcat22/halo2ecc-s.git?branch=yz/adapt_secp256r1_from_bisect-lookup-0.5.6#2a38add8e1d797ccac1e1e30ffa930ce58273d91"
+source = "git+https://github.com/fatcat22/halo2ecc-s.git?branch=yz/adapt_secp256r1_from_bisect-lookup-0.5.6#2ea018b83ba2c76d8644cd08234587973ab56187"
 dependencies = [
  "ark-std",
  "halo2_proofs",
