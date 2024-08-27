@@ -5,7 +5,9 @@ mod fq;
 
 pub use curve::{Secp256r1, Secp256r1Affine};
 pub use curve_macro::new_curve_impl;
+/// base of secp256r1
 pub use fp::Fp;
+/// scalar of secp256r1
 pub use fq::Fq;
 
 /// Compute a + b + carry, returning the result and the new carry over.
