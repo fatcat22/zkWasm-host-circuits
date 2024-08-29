@@ -741,8 +741,8 @@ macro_rules! new_curve_impl {
             }
         }
 
-        // impl serde::SerdeObject for $name {
-         impl  $name {
+        impl halo2curves_axiom::serde::SerdeObject for $name {
+         // impl  $name {
             fn from_raw_bytes_unchecked(bytes: &[u8]) -> Self {
                 debug_assert_eq!(bytes.len(), 3 * $base::size());
                 let [x, y, z] = [0, 1, 2]
@@ -844,8 +844,7 @@ macro_rules! new_curve_impl {
         impl cmp::Eq for $name_affine {}
 
 
-        // impl serde::SerdeObject for $name_affine {
-        impl  $name_affine {
+        impl halo2curves_axiom::serde::SerdeObject for $name_affine {
             fn from_raw_bytes_unchecked(bytes: &[u8]) -> Self {
                 debug_assert_eq!(bytes.len(), 2 * $base::size());
                 let [x, y] =
@@ -971,14 +970,14 @@ macro_rules! new_curve_impl {
                 $constant_b
             }
 
-            fn get_endomorphism_base(base: &Self) -> Self {
+            fn get_endomorphism_base(_base: &Self) -> Self {
                 todo!()
                 // let x = Self::curve_cube_root() * base.x;
                 // let y = -base.y;
                 // Self::from_xy(x, y).unwrap()
             }
 
-            fn get_endomorphism_scalars(k: &Self::ScalarExt) -> (u128, u128) {
+            fn get_endomorphism_scalars(_k: &Self::ScalarExt) -> (u128, u128) {
                 todo!()
             }
 

@@ -4,10 +4,9 @@ use core::ops::{Add, Mul, Neg, Sub};
 use ff::PrimeField;
 use halo2_proofs::arithmetic::{BaseExt, FieldExt, Group};
 use halo2curves_axiom::{
-    ff::Field, field_arithmetic, field_common, field_specific, impl_add_binop_specify_output,
+    field_arithmetic, field_common, field_specific, impl_add_binop_specify_output,
     impl_binops_additive, impl_binops_additive_specify_output, impl_binops_multiplicative,
     impl_binops_multiplicative_mixed, impl_from_u64, impl_sub_binop_specify_output, impl_sum_prod,
-    secp256r1,
 };
 use rand::RngCore;
 use std::io::{self, Read, Write};

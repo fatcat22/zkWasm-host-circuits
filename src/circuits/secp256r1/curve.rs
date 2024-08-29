@@ -1,7 +1,7 @@
 // use crate::ff::WithSmallOrderMulGroup;
 // use crate::hash_to_curve::simple_svdw_hash_to_curve;
 use super::curve_macro::new_curve_impl;
-use super::{fp::Fp, fq::Fq, mul_512};
+use super::{fp::Fp, fq::Fq};
 // use crate::{Coordinates, CurveAffine, CurveAffineExt, CurveExt};
 use core::cmp;
 use core::fmt::Debug;
@@ -9,7 +9,7 @@ use core::iter::Sum;
 use core::ops::{Add, Mul, Neg, Sub};
 use ff::{Field, PrimeField};
 use group::{prime::PrimeCurveAffine, Curve, Group as _, GroupEncoding};
-use halo2_proofs::arithmetic::{BaseExt, Coordinates, CurveAffine, CurveExt, Group};
+use halo2_proofs::arithmetic::{Coordinates, CurveAffine, CurveExt, Group};
 use rand::RngCore;
 use std::convert::From;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
@@ -89,6 +89,7 @@ new_curve_impl!(
     |curve_id, domain_prefix| simple_svdw_hash_to_curve(curve_id, domain_prefix, Secp256r1::SSVDW_Z),
 );
 
+/*
 impl Secp256r1 {
     // Optimal Z with: <https://datatracker.ietf.org/doc/html/rfc9380#sswu-z-code>
     // 0xffffffff00000001000000000000000000000000fffffffffffffffffffffff5
@@ -99,87 +100,4 @@ impl Secp256r1 {
         0x0000000000000000,
         0xffffffff00000001,
     ]);
-}
-
-/*
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::group::Curve;
-    use crate::secp256r1::{Fp, Fq, Secp256r1};
-    use ff::FromUniformBytes;
-    use rand_core::OsRng;
-
-    #[test]
-    fn test_hash_to_curve() {
-        crate::tests::curve::hash_to_curve_test::<Secp256r1>();
-    }
-
-    #[test]
-    fn test_curve() {
-        crate::tests::curve::curve_tests::<Secp256r1>();
-    }
-
-    #[test]
-    fn test_serialization() {
-        crate::tests::curve::random_serialization_test::<Secp256r1>();
-        #[cfg(feature = "derive_serde")]
-        crate::tests::curve::random_serde_test::<Secp256r1>();
-    }
-
-    #[test]
-    fn ecdsa_example() {
-        fn mod_n(x: Fp) -> Fq {
-            let mut x_repr = [0u8; 32];
-            x_repr.copy_from_slice(x.to_repr().as_ref());
-            let mut x_bytes = [0u8; 64];
-            x_bytes[..32].copy_from_slice(&x_repr[..]);
-            Fq::from_uniform_bytes(&x_bytes)
-        }
-
-        let g = Secp256r1::generator();
-
-        for _ in 0..1000 {
-            // Generate a key pair
-            let sk = Fq::random(OsRng);
-            let pk = (g * sk).to_affine();
-
-            // Generate a valid signature
-            // Suppose `m_hash` is the message hash
-            let msg_hash = Fq::random(OsRng);
-
-            let (r, s) = {
-                // Draw arandomness
-                let k = Fq::random(OsRng);
-                let k_inv = k.invert().unwrap();
-
-                // Calculate `r`
-                let r_point = (g * k).to_affine().coordinates().unwrap();
-                let x = r_point.x();
-                let r = mod_n(*x);
-
-                // Calculate `s`
-                let s = k_inv * (msg_hash + (r * sk));
-
-                (r, s)
-            };
-
-            {
-                // Verify
-                let s_inv = s.invert().unwrap();
-                let u_1 = msg_hash * s_inv;
-                let u_2 = r * s_inv;
-
-                let v_1 = g * u_1;
-                let v_2 = pk * u_2;
-
-                let r_point = (v_1 + v_2).to_affine().coordinates().unwrap();
-                let x_candidate = r_point.x();
-                let r_candidate = mod_n(*x_candidate);
-
-                assert_eq!(r, r_candidate);
-            }
-        }
-    }
-}
- */
+} */
