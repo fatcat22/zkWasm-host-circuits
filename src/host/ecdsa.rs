@@ -7,11 +7,11 @@ pub mod secp256r1 {
         r: &secp256r1::Fq,
         s: &secp256r1::Fq,
     ) -> Result<(), anyhow::Error> {
-        super::common::verify(pk, msg_hash, r, s)
+        super::general::verify(pk, msg_hash, r, s)
     }
 }
 
-mod common {
+pub mod general {
     use anyhow::anyhow;
     use ff::Field;
     use group::Curve;

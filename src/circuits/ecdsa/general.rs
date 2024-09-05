@@ -1,6 +1,6 @@
 use ark_std::{end_timer, start_timer};
-use group::prime::PrimeCurveAffine;
-use halo2_proofs::pairing::bn256::Fr;
+use ff::Field;
+use halo2_proofs::arithmetic::CurveAffine;
 use halo2_proofs::{
     arithmetic::{BaseExt, FieldExt},
     circuit::{AssignedCell, Chip, Layouter, Region},
@@ -12,8 +12,6 @@ use num_traits::{FromPrimitive, Num, One, ToPrimitive};
 use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::rc::Rc;
-
-use crate::host::secp256r1;
 
 use halo2ecc_s::assign::{AssignedCondition, AssignedInteger, Cell as ContextCell};
 use halo2ecc_s::circuit::ecc_chip::EccBaseIntegerChipWrapper;
@@ -41,146 +39,6 @@ pub struct EcdsaChipConfig {
     point_select_chip_config: SelectChipConfig,
 }
 
-pub fn fr_to_bn(f: &Fr) -> BigUint {
-    let mut bytes: Vec<u8> = Vec::new();
-    f.write(&mut bytes).unwrap();
-    BigUint::from_bytes_le(&bytes[..])
-}
-
-pub fn fr_to_bool(f: &Fr) -> bool {
-    let mut bytes: Vec<u8> = Vec::new();
-    f.write(&mut bytes).unwrap();
-    return bytes[0] == 1u8;
-}
-
-fn assigned_cells_to_biguint(
-    a: &[Limb<Fr>], //G1 (3 * 2 + 1)
-    start: usize,
-) -> BigUint {
-    let mut bn = BigUint::from(0 as u64);
-    for i in start..start + 3 {
-        let shift = BigUint::from(2 as u32).pow(108 * (i - start) as u32);
-        bn.add_assign(fr_to_bn(&a[i].value).mul(shift.clone()));
-    }
-    bn
-}
-
-fn assemble_biguint(fr_slice: &[Fr; 3]) -> BigUint {
-    let mut bn = BigUint::from(0 as u64);
-    for (i, fr) in fr_slice.iter().enumerate() {
-        let shift = BigUint::from(2 as u32).pow(108 * i as u32);
-        bn.add_assign(fr_to_bn(fr).mul(shift.clone()));
-    }
-    bn
-}
-
-fn split_biguint(v: &BigUint) -> [Fr; 3] {
-    const BIT_COUNT: u32 = 108;
-    const MASK: u128 = (1u128 << BIT_COUNT) - 1;
-
-    let mask = BigUint::from_u128(MASK).unwrap();
-
-    [
-        Fr::from_u128((v & (&mask)).to_u128().unwrap()),
-        Fr::from_u128(((v >> BIT_COUNT) & mask.clone()).to_u128().unwrap()),
-        Fr::from_u128(((v >> BIT_COUNT * 2) & mask.clone()).to_u128().unwrap()), // TODO: assert no more than 40?
-    ]
-}
-
-fn get_scalar_from_cell(
-    ctx: &mut GeneralScalarEccContext<secp256r1::Secp256r1Affine, Fr>,
-    v: &[Limb<Fr>],
-) -> AssignedInteger<secp256r1::Fq, Fr> {
-    let w = assemble_biguint(&[v[0].value, v[1].value, v[2].value]);
-
-    ctx.scalar_integer_ctx.assign_w(&w)
-}
-
-fn get_g1_from_xy_cells(
-    ctx: &mut GeneralScalarEccContext<secp256r1::Secp256r1Affine, Fr>,
-    x: &[Limb<Fr>], //G1 (3 * 2 + 1)
-    y: &[Limb<Fr>], //G1 (3 * 2 + 1)
-    is_identity: &Limb<Fr>,
-) -> AssignedPoint<secp256r1::Secp256r1Affine, Fr> {
-    let x_bn = assigned_cells_to_biguint(x, 0);
-    let y_bn = assigned_cells_to_biguint(y, 0);
-    let is_identity = fr_to_bool(&is_identity.value);
-    let x = ctx.base_integer_chip().assign_w(&x_bn);
-    let y = ctx.base_integer_chip().assign_w(&y_bn);
-    AssignedPoint::new(
-        x,
-        y,
-        // AssignedCondition(ctx.0.ctx.borrow_mut().assign(if is_identity {
-        // TODO: 确认是用 base_integer_chip 还是 scalar_integer_chip
-        // TODO: constrain z equals to is_identity paramter
-        AssignedCondition(ctx.base_integer_chip().base_chip().assign(if is_identity {
-            Fr::one()
-        } else {
-            Fr::zero()
-        })),
-    )
-}
-
-fn get_g1_from_cells(
-    ctx: &mut GeneralScalarEccContext<secp256r1::Secp256r1Affine, Fr>,
-    a: &[Limb<Fr>], //G1 (3 * 2 + 1)
-) -> AssignedPoint<secp256r1::Secp256r1Affine, Fr> {
-    get_g1_from_xy_cells(ctx, &a[0..3], &a[3..6], &a[6])
-}
-
-fn get_cell_of_ctx(
-    cells: &Vec<Vec<Vec<Option<AssignedCell<Fr, Fr>>>>>,
-    cell: &ContextCell,
-) -> AssignedCell<Fr, Fr> {
-    cells[cell.region as usize][cell.col][cell.row]
-        .clone()
-        .unwrap()
-}
-
-fn enable_point_permute(
-    ctx: &mut GeneralScalarEccContext<secp256r1::Secp256r1Affine, Fr>,
-    point: &AssignedPoint<secp256r1::Secp256r1Affine, Fr>,
-) {
-    for limb in &point.x.limbs_le {
-        ctx.base_integer_chip().base_chip().enable_permute(&limb);
-    }
-    for limb in &point.y.limbs_le {
-        ctx.base_integer_chip().base_chip().enable_permute(&limb);
-    }
-    ctx.base_integer_chip()
-        .base_chip()
-        .enable_permute(&point.z.0);
-}
-
-fn enable_integer_permute<T: BaseExt>(
-    region: &Region<Fr>,
-    cells: &Vec<Vec<Vec<Option<AssignedCell<Fr, Fr>>>>>,
-    scalar: &AssignedInteger<T, Fr>,
-    expect: &AssignedInteger<T, Fr>,
-) -> Result<(), Error> {
-    for (s_limb, e_limb) in scalar.limbs_le.iter().zip(expect.limbs_le.iter()) {
-        let s_cell = get_cell_of_ctx(cells, &s_limb.cell);
-        let e_cell = get_cell_of_ctx(cells, &e_limb.cell);
-        region.constrain_equal(s_cell.cell(), e_cell.cell())?;
-    }
-    Ok(())
-}
-
-fn enable_g1affine_identity_permute(
-    region: &Region<Fr>,
-    cells: &Vec<Vec<Vec<Option<AssignedCell<Fr, Fr>>>>>,
-    point: &AssignedPoint<secp256r1::Secp256r1Affine, Fr>,
-    expect: &AssignedPoint<secp256r1::Secp256r1Affine, Fr>,
-) -> Result<(), Error> {
-    enable_integer_permute(region, cells, &point.x, &expect.x)?;
-    enable_integer_permute(region, cells, &point.y, &expect.y)?;
-    // TODO
-    // let z_limb0 = point.z.0.cell;
-    // let z_limb0_assigned = get_cell_of_ctx(cells, &z_limb0);
-    // region.constrain_equal(input[6].get_the_cell().cell(), z_limb0_assigned.cell())?;
-    Ok(())
-}
-
 pub struct EcdsaChip<N: FieldExt> {
     config: EcdsaChipConfig,
     base_chip: BaseChip<N>,
@@ -202,21 +60,21 @@ impl<N: FieldExt> Chip<N> for EcdsaChip<N> {
     }
 }
 
-impl EcdsaChip<Fr> {
-    pub fn construct(config: <Self as Chip<Fr>>::Config) -> Self {
+impl<N: FieldExt> EcdsaChip<N> {
+    pub fn construct(config: <Self as Chip<N>>::Config) -> Self {
         Self {
             config: config.clone(),
-            point_select_chip: SelectChip::<Fr>::new(config.point_select_chip_config),
+            point_select_chip: SelectChip::<N>::new(config.point_select_chip_config),
             base_chip: BaseChip::new(config.base_chip_config),
-            range_chip: RangeChip::<Fr>::new(config.range_chip_config),
+            range_chip: RangeChip::<N>::new(config.range_chip_config),
             _marker: PhantomData,
         }
     }
 
-    pub fn configure(cs: &mut ConstraintSystem<Fr>) -> <Self as Chip<Fr>>::Config {
+    pub fn configure(cs: &mut ConstraintSystem<N>) -> <Self as Chip<N>>::Config {
         EcdsaChipConfig {
             base_chip_config: BaseChip::configure(cs),
-            range_chip_config: RangeChip::<Fr>::configure(cs),
+            range_chip_config: RangeChip::<N>::configure(cs),
             point_select_chip_config: SelectChip::configure(cs),
         }
     }
@@ -225,36 +83,32 @@ impl EcdsaChip<Fr> {
     /// ls[i] when i > 0:
     /// index:   0 1 2 | 3 4 5 |        6       |   7 8 9  | 10 11 12 | 13 14 15 | 16 17 18 |       19
     /// meaning:  pk_x | pk_y  | pk_is_identity | msg_hash |    r     |     s    |    r_y   | r_is_identity
-    pub fn verify_signatures(
+    pub fn verify<C: CurveAffine>(
         &self,
-        ls: &Vec<Limb<Fr>>,
-        layouter: &impl Layouter<Fr>,
+        ls: &Vec<Limb<N>>,
+        layouter: &impl Layouter<N>,
     ) -> Result<(), Error> {
         if ls.is_empty() {
             return Ok(());
         }
         let context = Rc::new(RefCell::new(Context::new()));
-        let mut ctx = GeneralScalarEccContext::new(context);
+        let mut ctx = GeneralScalarEccContext::<C, _>::new(context);
 
-        // let mut r_candidates = Vec::new();
-        let g = secp256r1::Secp256r1Affine::generator().to_curve();
+        // prepare some inmutable variables
         // TODO: ctx.assign_nonzero_point is better?
-        let g_point = ctx.assign_constant_point(&g);
-
+        let g = ctx.assign_constant_point(&C::generator().to_curve());
         // TODO: constrain lambda equals ls[0]
-        let ls0 = ls.get(0).map(|v| v.value).unwrap_or(Fr::zero());
+        let ls0 = ls.get(0).map(|v| v.value).unwrap_or(N::zero());
         let lambda = ctx.scalar_integer_ctx.assign_w(
             &BigUint::from_str_radix(format!("{:?}", ls0).strip_prefix("0x").unwrap(), 16).unwrap(),
         );
-
-        let mut rlc_coff = ctx.scalar_integer_ctx.assign_w(&BigUint::one());
-
         let negtive_one = ctx
             .scalar_integer_ctx
-            .assign_int_constant(-secp256r1::Fq::one());
+            .assign_int_constant(-C::ScalarExt::one());
 
         let ls = ls.get(1..).unwrap_or_default();
 
+        // collect points for msm
         let points = ls
             .chunks_exact(20)
             .map(|inputs| {
@@ -265,11 +119,14 @@ impl EcdsaChip<Fr> {
                     &inputs.get(16..19).unwrap(),
                     &inputs.get(19).unwrap(),
                 );
-                [g_point.clone(), pk, res]
+                [g.clone(), pk, res]
             })
             .flatten()
             .collect::<Vec<_>>();
 
+        let mut rlc_coff = ctx.scalar_integer_ctx.assign_w(&BigUint::one());
+
+        // collect scalars for msm
         let scalars = ls
             .chunks_exact(20)
             .enumerate()
@@ -303,24 +160,22 @@ impl EcdsaChip<Fr> {
             .flatten()
             .collect::<Vec<_>>();
 
-        let msm_res = ctx.msm(&points, &scalars);
-        let msm_res = ctx.ecc_reduce(&msm_res);
-        enable_point_permute(&mut ctx, &msm_res);
+        let result = ctx.msm(&points, &scalars);
+        let result = ctx.ecc_reduce(&result);
+        enable_point_permute(&mut ctx, &result);
 
         let expect = ctx.assign_constant_point(
-            &secp256r1::Secp256r1Affine {
-                x: secp256r1::Fp::zero(),
-                y: secp256r1::Fp::zero(),
-            }
-            .to_curve(),
+            &C::from_xy(C::Base::zero(), C::Base::zero())
+                .unwrap()
+                .to_curve(),
         );
         enable_point_permute(&mut ctx, &expect);
 
-        let records = Into::<Context<Fr>>::into(ctx).records;
+        let records = Into::<Context<N>>::into(ctx).records;
         layouter.assign_region(
-            || "base",
+            || "assign ecdsa verify",
             |mut region| {
-                let timer = start_timer!(|| "assign");
+                let timer = start_timer!(|| "assign ecdsa verify");
                 let cells = records.assign_all(
                     &mut region,
                     &self.base_chip,
@@ -328,7 +183,7 @@ impl EcdsaChip<Fr> {
                     &self.point_select_chip,
                 )?;
 
-                enable_g1affine_identity_permute(&mut region, &cells, &msm_res, &expect)?;
+                enable_g1affine_identity_permute(&mut region, &cells, &result, &expect)?;
 
                 end_timer!(timer);
                 Ok(())
@@ -338,13 +193,151 @@ impl EcdsaChip<Fr> {
     }
 }
 
+fn field_to_bn<N: FieldExt>(f: &N) -> BigUint {
+    let mut bytes: Vec<u8> = Vec::new();
+    f.write(&mut bytes).unwrap();
+    BigUint::from_bytes_le(&bytes[..])
+}
+
+fn field_to_bool<N: FieldExt>(f: &N) -> bool {
+    let mut bytes: Vec<u8> = Vec::new();
+    f.write(&mut bytes).unwrap();
+    return bytes[0] == 1u8;
+}
+
+fn assigned_cells_to_biguint<N: FieldExt>(a: &[Limb<N>]) -> BigUint {
+    let mut bn = BigUint::from(0 as u64);
+    for i in 0..3 {
+        let shift = BigUint::from(2 as u32).pow(108 * i as u32);
+        bn.add_assign(field_to_bn(&a[i].value).mul(shift.clone()));
+    }
+    bn
+}
+
+fn assemble_biguint<N: FieldExt>(fr_slice: &[N; 3]) -> BigUint {
+    let mut bn = BigUint::from(0 as u64);
+    for (i, fr) in fr_slice.iter().enumerate() {
+        let shift = BigUint::from(2 as u32).pow(108 * i as u32);
+        bn.add_assign(field_to_bn(fr).mul(shift.clone()));
+    }
+    bn
+}
+
+fn split_biguint<N: FieldExt>(v: &BigUint) -> [N; 3] {
+    const BIT_COUNT: u32 = 108;
+    const MASK: u128 = (1u128 << BIT_COUNT) - 1;
+
+    let mask = BigUint::from_u128(MASK).unwrap();
+
+    [
+        N::from_u128((v & (&mask)).to_u128().unwrap()),
+        N::from_u128(((v >> BIT_COUNT) & mask.clone()).to_u128().unwrap()),
+        N::from_u128(((v >> BIT_COUNT * 2) & mask.clone()).to_u128().unwrap()), // TODO: assert no more than 40?
+    ]
+}
+
+fn get_scalar_from_cell<C: CurveAffine, N: FieldExt>(
+    ctx: &mut GeneralScalarEccContext<C, N>,
+    v: &[Limb<N>],
+) -> AssignedInteger<C::ScalarExt, N> {
+    let w = assemble_biguint(&[v[0].value, v[1].value, v[2].value]);
+
+    ctx.scalar_integer_ctx.assign_w(&w)
+}
+
+fn get_g1_from_xy_cells<C: CurveAffine, N: FieldExt>(
+    ctx: &mut GeneralScalarEccContext<C, N>,
+    x: &[Limb<N>], //G1 (3 * 2 + 1)
+    y: &[Limb<N>], //G1 (3 * 2 + 1)
+    is_identity: &Limb<N>,
+) -> AssignedPoint<C, N> {
+    let x_bn = assigned_cells_to_biguint(x);
+    let y_bn = assigned_cells_to_biguint(y);
+    let is_identity = field_to_bool(&is_identity.value);
+    let x = ctx.base_integer_chip().assign_w(&x_bn);
+    let y = ctx.base_integer_chip().assign_w(&y_bn);
+    AssignedPoint::new(
+        x,
+        y,
+        // AssignedCondition(ctx.0.ctx.borrow_mut().assign(if is_identity {
+        // TODO: 确认是用 base_integer_chip 还是 scalar_integer_chip
+        // TODO: constrain z equals to is_identity paramter
+        AssignedCondition(ctx.base_integer_chip().base_chip().assign(if is_identity {
+            N::one()
+        } else {
+            N::zero()
+        })),
+    )
+}
+
+fn get_g1_from_cells<C: CurveAffine, N: FieldExt>(
+    ctx: &mut GeneralScalarEccContext<C, N>,
+    a: &[Limb<N>],
+) -> AssignedPoint<C, N> {
+    get_g1_from_xy_cells(ctx, &a[0..3], &a[3..6], &a[6])
+}
+
+fn get_cell_of_ctx<N: FieldExt>(
+    cells: &Vec<Vec<Vec<Option<AssignedCell<N, N>>>>>,
+    cell: &ContextCell,
+) -> AssignedCell<N, N> {
+    cells[cell.region as usize][cell.col][cell.row]
+        .clone()
+        .unwrap()
+}
+
+fn enable_point_permute<C: CurveAffine, N: FieldExt>(
+    ctx: &mut GeneralScalarEccContext<C, N>,
+    point: &AssignedPoint<C, N>,
+) {
+    for limb in &point.x.limbs_le {
+        ctx.base_integer_chip().base_chip().enable_permute(&limb);
+    }
+    for limb in &point.y.limbs_le {
+        ctx.base_integer_chip().base_chip().enable_permute(&limb);
+    }
+    ctx.base_integer_chip()
+        .base_chip()
+        .enable_permute(&point.z.0);
+}
+
+fn enable_integer_permute<T: BaseExt, N: FieldExt>(
+    region: &Region<N>,
+    cells: &Vec<Vec<Vec<Option<AssignedCell<N, N>>>>>,
+    scalar: &AssignedInteger<T, N>,
+    expect: &AssignedInteger<T, N>,
+) -> Result<(), Error> {
+    for (s_limb, e_limb) in scalar.limbs_le.iter().zip(expect.limbs_le.iter()) {
+        let s_cell = get_cell_of_ctx(cells, &s_limb.cell);
+        let e_cell = get_cell_of_ctx(cells, &e_limb.cell);
+        region.constrain_equal(s_cell.cell(), e_cell.cell())?;
+    }
+    Ok(())
+}
+
+fn enable_g1affine_identity_permute<C: CurveAffine, N: FieldExt>(
+    region: &Region<N>,
+    cells: &Vec<Vec<Vec<Option<AssignedCell<N, N>>>>>,
+    point: &AssignedPoint<C, N>,
+    expect: &AssignedPoint<C, N>,
+) -> Result<(), Error> {
+    enable_integer_permute(region, cells, &point.x, &expect.x)?;
+    enable_integer_permute(region, cells, &point.y, &expect.y)?;
+    // TODO
+    // let z_limb0 = point.z.0.cell;
+    // let z_limb0_assigned = get_cell_of_ctx(cells, &z_limb0);
+    // region.constrain_equal(input[6].get_the_cell().cell(), z_limb0_assigned.cell())?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use halo2_proofs::pairing::bn256::Fr;
     use num_traits::Num;
 
     #[test]
-    fn test_biguint_fr_convert() {
+    fn test_split_biguint() {
         // 0x7cf27b188d034f7e8a52380304b51ac3c08969e277f21b35a60b48fc47669978
         // 111110011110010011110110001100010001101 000000110100111101111110100010100101001000111000000000110000010010110101000110101100001111000000100010010110 100111100010011101111111001000011011001101011010011000001011010010001111110001000111011001101001100101111000
 
@@ -354,18 +347,16 @@ mod tests {
         )
         .unwrap();
 
-        let res = split_biguint(&v);
+        let res = split_biguint::<Fr>(&v);
         assert_eq!(res, [Fr::from_u128(0b100111100010011101111111001000011011001101011010011000001011010010001111110001000111011001101001100101111000), Fr::from_u128(0b000000110100111101111110100010100101001000111000000000110000010010110101000110101100001111000000100010010110), Fr::from_u128(0b111110011110010011110110001100010001101)]);
     }
 }
 
 #[cfg(test)]
-mod circuits_test {
+pub mod circuits_test {
     use super::*;
     use crate::host::ecdsa;
-    use crate::host::secp256r1::{Fq, Secp256r1, Secp256r1Affine};
     use ff::PrimeField;
-    use group::prime::PrimeCurveAffine;
     use halo2_proofs::{
         arithmetic::CurveAffine,
         circuit::floor_planner::FlatFloorPlanner,
@@ -381,29 +372,30 @@ mod circuits_test {
     }
 
     #[derive(Debug, PartialEq, Default)]
-    struct ECDSAInput {
-        pk_x: [Fr; 3],
-        pk_y: [Fr; 3],
+    struct ECDSAInput<N> {
+        pk_x: [N; 3],
+        pk_y: [N; 3],
         pk_is_identity: bool,
-        msg_hash: [Fr; 3],
-        r: [Fr; 3],
-        s: [Fr; 3],
-        r_y: [Fr; 3],
+        msg_hash: [N; 3],
+        r: [N; 3],
+        s: [N; 3],
+        r_y: [N; 3],
         r_is_identity: bool,
     }
 
     #[derive(Debug, PartialEq, Default)]
-    struct TestCircuit {
-        lambda: Fr,
-        inputs: Vec<ECDSAInput>,
+    struct TestCircuit<N, C> {
+        lambda: N,
+        inputs: Vec<ECDSAInput<N>>,
+        _marker: PhantomData<C>,
     }
 
-    impl TestCircuit {
+    impl<N: FieldExt, C: CurveAffine> TestCircuit<N, C> {
         fn assign_input(
             &self,
             input_column: &Column<Advice>,
-            layouter: impl Layouter<Fr>,
-        ) -> Result<Vec<Limb<Fr>>, Error> {
+            layouter: impl Layouter<N>,
+        ) -> Result<Vec<Limb<N>>, Error> {
             layouter.assign_region(
                 || "assign input region ",
                 |region| {
@@ -456,9 +448,9 @@ mod circuits_test {
                         }
 
                         let pk_is_identity = if input.pk_is_identity {
-                            Fr::one()
+                            N::one()
                         } else {
-                            Fr::zero()
+                            N::zero()
                         };
                         let cell = Limb::new(
                             Some(region.assign_advice(
@@ -529,9 +521,9 @@ mod circuits_test {
                         }
 
                         let r_is_identity = if input.r_is_identity {
-                            Fr::one()
+                            N::one()
                         } else {
-                            Fr::zero()
+                            N::zero()
                         };
                         let cell = Limb::new(
                             Some(region.assign_advice(
@@ -552,7 +544,7 @@ mod circuits_test {
         }
     }
 
-    impl Circuit<Fr> for TestCircuit {
+    impl<N: FieldExt, C: CurveAffine> Circuit<N> for TestCircuit<N, C> {
         type Config = TestConfig;
         type FloorPlanner = FlatFloorPlanner;
 
@@ -560,7 +552,7 @@ mod circuits_test {
             Self::default()
         }
 
-        fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
+        fn configure(meta: &mut ConstraintSystem<N>) -> Self::Config {
             let input = meta.advice_column();
             meta.enable_equality(input);
 
@@ -573,14 +565,14 @@ mod circuits_test {
         fn synthesize(
             &self,
             config: Self::Config,
-            mut layouter: impl Layouter<Fr>,
+            mut layouter: impl Layouter<N>,
         ) -> Result<(), Error> {
-            let chip = EcdsaChip::construct(config.chip_config);
+            let chip = EcdsaChip::<N>::construct(config.chip_config);
 
             let inputs = self.assign_input(&config.input, layouter.namespace(|| "assign input"))?;
 
             chip.range_chip.init_table(&layouter)?;
-            chip.verify_signatures(&inputs, &layouter)
+            chip.verify::<C>(&inputs, &layouter)
         }
     }
 
@@ -588,29 +580,28 @@ mod circuits_test {
         T::from_str_vartime(&format!("{}", BigUint::from_str_radix(s, 16).unwrap())).unwrap()
     }
 
-    pub fn to_biguint<F: PrimeField>(f: &F) -> BigUint {
+    fn to_biguint<F: ff::Field>(f: &F) -> BigUint {
         BigUint::from_str_radix(format!("{:?}", f).strip_prefix("0x").unwrap(), 16).unwrap()
     }
 
-    pub fn modulus<F: PrimeField>() -> BigUint {
+    fn modulus<F: PrimeField>() -> BigUint {
         to_biguint(&-F::one()) + 1u64
     }
 
-    #[test]
-    fn test_prover() {
-        let g = Secp256r1::generator();
+    pub fn test_circuits<C: CurveAffine, N: FieldExt>(count: usize) {
+        let g = C::generator();
 
-        let inputs = (0..340)
+        let inputs = (0..count)
             .into_iter()
             .map(|_| {
-                let sk = Fq::rand();
-                let pk = Secp256r1Affine::from(g * sk);
-                let msg_hash = Fq::rand();
+                let sk = C::ScalarExt::rand();
+                let pk = C::from(g * sk);
+                let msg_hash = C::ScalarExt::rand();
 
-                let k = Fq::rand();
+                let k = C::ScalarExt::rand();
                 let k_inv = k.invert().unwrap();
 
-                let r_affine = Secp256r1Affine::from(g * k);
+                let r_affine = C::from(g * k);
                 let r_point = r_affine.coordinates().unwrap();
                 let x = r_point.x();
                 let y = r_point.y();
@@ -618,13 +609,19 @@ mod circuits_test {
                 let y_bigint = to_biguint(y);
                 let r_is_identity = bool::from(r_affine.is_identity());
 
-                let r = from_hex_str::<Fq>(&format!("{:x}", x_bigint % modulus::<Fq>()));
-                let r_y = from_hex_str::<Fq>(&format!("{:x}", y_bigint % modulus::<Fq>()));
+                let r = from_hex_str::<C::ScalarExt>(&format!(
+                    "{:x}",
+                    x_bigint % modulus::<C::ScalarExt>()
+                ));
+                let r_y = from_hex_str::<C::ScalarExt>(&format!(
+                    "{:x}",
+                    y_bigint % modulus::<C::ScalarExt>()
+                ));
                 let s = k_inv * (msg_hash + (r * sk));
 
                 let input = ECDSAInput {
-                    pk_x: split_biguint(&to_biguint(&pk.x)),
-                    pk_y: split_biguint(&to_biguint(&pk.y)),
+                    pk_x: split_biguint(&to_biguint(pk.coordinates().unwrap().x())),
+                    pk_y: split_biguint(&to_biguint(pk.coordinates().unwrap().y())),
                     pk_is_identity: false,
 
                     msg_hash: split_biguint(&to_biguint(&msg_hash)),
@@ -635,15 +632,16 @@ mod circuits_test {
                 };
 
                 // check input data
-                ecdsa::secp256r1::verify(pk, &msg_hash, &r, &s).unwrap();
+                ecdsa::general::verify(pk, &msg_hash, &r, &s).unwrap();
 
                 input
             })
             .collect();
 
-        let circuit = TestCircuit {
-            lambda: Fr::rand(),
+        let circuit = TestCircuit::<_, C> {
+            lambda: N::rand(),
             inputs,
+            _marker: PhantomData,
         };
 
         let prover = MockProver::run(23, &circuit, Vec::new()).unwrap();
