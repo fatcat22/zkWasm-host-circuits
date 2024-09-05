@@ -3,11 +3,13 @@ pub mod bn256;
 pub mod cache;
 pub mod datahash;
 pub mod db;
+pub mod ecdsa;
 pub mod jubjub;
 pub mod keccak256;
 pub mod merkle;
 pub mod mongomerkle;
 pub mod poseidon;
+pub mod secp256r1;
 
 use halo2_proofs::arithmetic::FieldExt;
 use serde::{Deserialize, Serialize};

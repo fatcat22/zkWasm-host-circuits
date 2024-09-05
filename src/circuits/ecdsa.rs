@@ -13,7 +13,7 @@ use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
-use super::secp256r1::{self, Secp256r1Affine};
+use crate::host::secp256r1;
 
 use halo2ecc_s::assign::{AssignedCondition, AssignedInteger, Cell as ContextCell};
 use halo2ecc_s::circuit::ecc_chip::EccBaseIntegerChipWrapper;
@@ -88,7 +88,7 @@ fn split_biguint(v: &BigUint) -> [Fr; 3] {
 }
 
 fn get_scalar_from_cell(
-    ctx: &mut GeneralScalarEccContext<Secp256r1Affine, Fr>,
+    ctx: &mut GeneralScalarEccContext<secp256r1::Secp256r1Affine, Fr>,
     v: &[Limb<Fr>],
 ) -> AssignedInteger<secp256r1::Fq, Fr> {
     let w = assemble_biguint(&[v[0].value, v[1].value, v[2].value]);
@@ -97,11 +97,11 @@ fn get_scalar_from_cell(
 }
 
 fn get_g1_from_xy_cells(
-    ctx: &mut GeneralScalarEccContext<Secp256r1Affine, Fr>,
+    ctx: &mut GeneralScalarEccContext<secp256r1::Secp256r1Affine, Fr>,
     x: &[Limb<Fr>], //G1 (3 * 2 + 1)
     y: &[Limb<Fr>], //G1 (3 * 2 + 1)
     is_identity: &Limb<Fr>,
-) -> AssignedPoint<Secp256r1Affine, Fr> {
+) -> AssignedPoint<secp256r1::Secp256r1Affine, Fr> {
     let x_bn = assigned_cells_to_biguint(x, 0);
     let y_bn = assigned_cells_to_biguint(y, 0);
     let is_identity = fr_to_bool(&is_identity.value);
@@ -122,9 +122,9 @@ fn get_g1_from_xy_cells(
 }
 
 fn get_g1_from_cells(
-    ctx: &mut GeneralScalarEccContext<Secp256r1Affine, Fr>,
+    ctx: &mut GeneralScalarEccContext<secp256r1::Secp256r1Affine, Fr>,
     a: &[Limb<Fr>], //G1 (3 * 2 + 1)
-) -> AssignedPoint<Secp256r1Affine, Fr> {
+) -> AssignedPoint<secp256r1::Secp256r1Affine, Fr> {
     get_g1_from_xy_cells(ctx, &a[0..3], &a[3..6], &a[6])
 }
 
@@ -138,8 +138,8 @@ fn get_cell_of_ctx(
 }
 
 fn enable_point_permute(
-    ctx: &mut GeneralScalarEccContext<Secp256r1Affine, Fr>,
-    point: &AssignedPoint<Secp256r1Affine, Fr>,
+    ctx: &mut GeneralScalarEccContext<secp256r1::Secp256r1Affine, Fr>,
+    point: &AssignedPoint<secp256r1::Secp256r1Affine, Fr>,
 ) {
     for limb in &point.x.limbs_le {
         ctx.base_integer_chip().base_chip().enable_permute(&limb);
@@ -169,8 +169,8 @@ fn enable_integer_permute<T: BaseExt>(
 fn enable_g1affine_identity_permute(
     region: &Region<Fr>,
     cells: &Vec<Vec<Vec<Option<AssignedCell<Fr, Fr>>>>>,
-    point: &AssignedPoint<Secp256r1Affine, Fr>,
-    expect: &AssignedPoint<Secp256r1Affine, Fr>,
+    point: &AssignedPoint<secp256r1::Secp256r1Affine, Fr>,
+    expect: &AssignedPoint<secp256r1::Secp256r1Affine, Fr>,
 ) -> Result<(), Error> {
     enable_integer_permute(region, cells, &point.x, &expect.x)?;
     enable_integer_permute(region, cells, &point.y, &expect.y)?;
@@ -237,7 +237,7 @@ impl EcdsaChip<Fr> {
         let mut ctx = GeneralScalarEccContext::new(context);
 
         // let mut r_candidates = Vec::new();
-        let g = Secp256r1Affine::generator().to_curve();
+        let g = secp256r1::Secp256r1Affine::generator().to_curve();
         // TODO: ctx.assign_nonzero_point is better?
         let g_point = ctx.assign_constant_point(&g);
 
@@ -308,7 +308,7 @@ impl EcdsaChip<Fr> {
         enable_point_permute(&mut ctx, &msm_res);
 
         let expect = ctx.assign_constant_point(
-            &Secp256r1Affine {
+            &secp256r1::Secp256r1Affine {
                 x: secp256r1::Fp::zero(),
                 y: secp256r1::Fp::zero(),
             }
@@ -362,9 +362,10 @@ mod tests {
 #[cfg(test)]
 mod circuits_test {
     use super::*;
-    use crate::circuits::secp256r1::{Fq, Secp256r1, Secp256r1Affine};
+    use crate::host::ecdsa;
+    use crate::host::secp256r1::{Fq, Secp256r1, Secp256r1Affine};
     use ff::PrimeField;
-    use group::{prime::PrimeCurveAffine, Curve};
+    use group::prime::PrimeCurveAffine;
     use halo2_proofs::{
         arithmetic::CurveAffine,
         circuit::floor_planner::FlatFloorPlanner,
@@ -587,14 +588,6 @@ mod circuits_test {
         T::from_str_vartime(&format!("{}", BigUint::from_str_radix(s, 16).unwrap())).unwrap()
     }
 
-    fn mod_n(x: &secp256r1::Fp) -> secp256r1::Fq {
-        let mut x_repr = [0u8; 32];
-        x_repr.copy_from_slice(x.to_repr().as_ref());
-        let mut x_bytes = [0u8; 64];
-        x_bytes[..32].copy_from_slice(&x_repr[..]);
-        secp256r1::Fq::from_uniform_bytes(&x_bytes)
-    }
-
     pub fn to_biguint<F: PrimeField>(f: &F) -> BigUint {
         BigUint::from_str_radix(format!("{:?}", f).strip_prefix("0x").unwrap(), 16).unwrap()
     }
@@ -642,28 +635,7 @@ mod circuits_test {
                 };
 
                 // check input data
-                // let r_point = (msg_hash * s_inv) * g + (r * s_inv) * pk
-                // assert_eq!(r_point.x, r);
-                {
-                    println!("r: {:?}", r);
-                    println!("s: {:?}", s);
-                    println!("msghash: {:?}", msg_hash);
-                    println!("pk: {:?}", pk);
-
-                    let pk = pk.to_curve();
-                    let s_inv = s.invert().unwrap();
-                    let u_1 = msg_hash * s_inv;
-                    let u_2 = r * s_inv;
-
-                    let v_1 = g * u_1;
-                    let v_2 = pk * u_2;
-
-                    let r_point = (v_1 + v_2).to_affine().coordinates().unwrap();
-                    let x_candidate = r_point.x();
-                    let r_candidate = mod_n(x_candidate);
-
-                    assert_eq!(r, r_candidate);
-                }
+                ecdsa::secp256r1::verify(pk, &msg_hash, &r, &s).unwrap();
 
                 input
             })
