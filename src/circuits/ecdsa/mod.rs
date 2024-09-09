@@ -1,5 +1,7 @@
 mod general;
 
+pub use general::{EcdsaChip, EcdsaChipConfig};
+
 use crate::utils::Limb;
 use halo2_proofs::{arithmetic::FieldExt, circuit::Layouter, plonk::Error};
 

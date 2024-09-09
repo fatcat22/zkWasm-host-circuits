@@ -5,6 +5,7 @@ use crate::circuits::keccak256::KeccakGateConfig;
 use crate::host::keccak256::KECCAK_HASHER;
 use crate::host::ForeignInst::{Keccak256Finalize, Keccak256New, Keccak256Push};
 use crate::host::{ExternalHostCallEntry, ExternalHostCallEntryTable, ForeignInst};
+use crate::proof::HostExtraInput;
 use crate::utils::Limb;
 use ark_std::{end_timer, start_timer};
 use halo2_proofs::circuit::{Layouter, Region};
@@ -66,6 +67,7 @@ impl HostOpSelector for KeccakChip<Fr> {
         offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
+        _extra: &HostExtraInput<Fr>,
         config: &HostOpConfig,
     ) -> Result<Vec<Limb<Fr>>, Error> {
         let opcodes: Vec<Fr> = Self::opcodes();

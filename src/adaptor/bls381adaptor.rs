@@ -18,6 +18,7 @@ const BLSSUM_SIZE: usize = 1 + BLS381FR_SIZE + 2 * BLS381G1_SIZE;
 use crate::circuits::bls::{Bls381ChipConfig, Bls381PairChip, Bls381SumChip};
 
 use crate::circuits::host::{HostOpConfig, HostOpSelector};
+use crate::proof::HostExtraInput;
 use crate::utils::Limb;
 
 use super::get_selected_entries;
@@ -132,6 +133,7 @@ impl HostOpSelector for Bls381PairChip<Fr> {
         _offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
+        _extra: &HostExtraInput<Fr>,
         config: &HostOpConfig,
     ) -> Result<Vec<Limb<Fr>>, Error> {
         let opcodes = Self::opcodes();
@@ -347,6 +349,7 @@ impl HostOpSelector for Bls381SumChip<Fr> {
         _offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
+        _extra: &HostExtraInput<Fr>,
         config: &HostOpConfig,
     ) -> Result<Vec<Limb<Fr>>, Error> {
         let opcodes = Self::opcodes();

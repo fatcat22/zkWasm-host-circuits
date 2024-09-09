@@ -17,6 +17,25 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Debug, Default)]
 pub struct ExternalHostCallEntryTable(pub Vec<ExternalHostCallEntry>);
 
+#[derive(Serialize, Deserialize, Debug, Default, PartialEq)]
+pub struct HostExtraInputRaw {
+    pub commitment: Option<[u64; 4]>,
+}
+
+impl HostExtraInputRaw {
+    pub fn is_default(&self) -> bool {
+        self == &Self::default()
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Default)]
+pub struct HostInput {
+    // TODO: other type except ecdsa will deserialize failed.
+    pub table: ExternalHostCallEntryTable,
+    #[serde(default, skip_serializing_if = "HostExtraInputRaw::is_default")]
+    pub extra: HostExtraInputRaw,
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ExternalHostCallEntry {
     pub op: usize,
@@ -70,6 +89,8 @@ pub enum ForeignInst {
     WitnessSetIndex,
     WitnessIndexedPush,
     WitnessIndexedPop,
+    EcdsaNew,
+    EcdsaPush,
 }
 
 pub enum ReduceRule<F: FieldExt> {

@@ -21,6 +21,7 @@ const BN256SUM_SIZE: usize = 1 + BN256FR_SIZE + 2 * BN256G1_SIZE;
 use crate::circuits::bn256::{Bn256ChipConfig, Bn256PairChip, Bn256SumChip};
 
 use crate::circuits::host::{HostOpConfig, HostOpSelector};
+use crate::proof::HostExtraInput;
 use crate::utils::Limb;
 
 use crate::host::{ExternalHostCallEntry, ForeignInst};
@@ -135,6 +136,7 @@ impl HostOpSelector for Bn256PairChip<Fr> {
         offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
+        _extra: &HostExtraInput<Fr>,
         config: &HostOpConfig,
     ) -> Result<Vec<Limb<Fr>>, Error> {
         let opcodes = Self::opcodes();
@@ -444,6 +446,7 @@ impl HostOpSelector for Bn256SumChip<Fr> {
         offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
+        _extra: &HostExtraInput<Fr>,
         config: &HostOpConfig,
     ) -> Result<Vec<Limb<Fr>>, Error> {
         let opcodes = Self::opcodes();

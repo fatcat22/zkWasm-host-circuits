@@ -9,6 +9,7 @@ use crate::host::poseidon::POSEIDON_HASHER;
 use crate::host::poseidon::POSEIDON_HASHER_SPEC;
 use crate::host::ForeignInst::{PoseidonFinalize, PoseidonNew, PoseidonPush};
 use crate::host::{ExternalHostCallEntry, ExternalHostCallEntryTable, ForeignInst};
+use crate::proof::HostExtraInput;
 use ark_std::{end_timer, start_timer};
 use halo2_proofs::arithmetic::FieldExt;
 use halo2_proofs::circuit::{Layouter, Region};
@@ -92,6 +93,7 @@ impl HostOpSelector for PoseidonChip<Fr, 9, 8> {
         offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
+        _extra: &HostExtraInput<Fr>,
         config: &HostOpConfig,
     ) -> Result<Vec<Limb<Fr>>, Error> {
         let opcodes = Self::opcodes();

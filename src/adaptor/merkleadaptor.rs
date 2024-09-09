@@ -12,6 +12,7 @@ use crate::host::mongomerkle::{MongoMerkle, DEFAULT_HASH_VEC};
 use crate::host::ExternalHostCallEntry;
 use crate::host::ForeignInst;
 use crate::host::ForeignInst::{MerkleAddress, MerkleGet, MerkleGetRoot, MerkleSet, MerkleSetRoot};
+use crate::proof::HostExtraInput;
 use crate::utils::data_to_bytes;
 use crate::utils::field_to_bytes;
 use crate::utils::Limb;
@@ -94,6 +95,7 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
         offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
+        _extra: &HostExtraInput<Fr>,
         config: &HostOpConfig,
     ) -> Result<Vec<Limb<Fr>>, Error> {
         let opcodes = Self::opcodes();

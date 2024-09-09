@@ -8,7 +8,7 @@ use halo2_proofs::{
 };
 use halo2ecc_s::circuit::ecc_chip::EccChipScalarOps;
 use halo2ecc_s::circuit::integer_chip::IntegerChipOps;
-use num_traits::{FromPrimitive, Num, One, ToPrimitive};
+use num_traits::{Num, One};
 use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::rc::Rc;
@@ -99,9 +99,10 @@ impl<N: FieldExt> EcdsaChip<N> {
         let g = ctx.assign_constant_point(&C::generator().to_curve());
         // TODO: constrain lambda equals ls[0]
         let ls0 = ls.get(0).map(|v| v.value).unwrap_or(N::zero());
-        let lambda = ctx.scalar_integer_ctx.assign_w(
-            &BigUint::from_str_radix(format!("{:?}", ls0).strip_prefix("0x").unwrap(), 16).unwrap(),
-        );
+        let lambda =
+            BigUint::from_str_radix(format!("{:?}", ls0).strip_prefix("0x").unwrap(), 16).unwrap();
+        println!("lambda: 0x{:x}", lambda);
+        let lambda = ctx.scalar_integer_ctx.assign_w(&lambda);
         let negtive_one = ctx
             .scalar_integer_ctx
             .assign_int_constant(-C::ScalarExt::one());
@@ -160,9 +161,11 @@ impl<N: FieldExt> EcdsaChip<N> {
             .flatten()
             .collect::<Vec<_>>();
 
+        assert_eq!(points.len(), scalars.len());
         let result = ctx.msm(&points, &scalars);
         let result = ctx.ecc_reduce(&result);
         enable_point_permute(&mut ctx, &result);
+        println!("msm res: {:?}", result);
 
         let expect = ctx.assign_constant_point(
             &C::from_xy(C::Base::zero(), C::Base::zero())
@@ -221,19 +224,6 @@ fn assemble_biguint<N: FieldExt>(fr_slice: &[N; 3]) -> BigUint {
         bn.add_assign(field_to_bn(fr).mul(shift.clone()));
     }
     bn
-}
-
-fn split_biguint<N: FieldExt>(v: &BigUint) -> [N; 3] {
-    const BIT_COUNT: u32 = 108;
-    const MASK: u128 = (1u128 << BIT_COUNT) - 1;
-
-    let mask = BigUint::from_u128(MASK).unwrap();
-
-    [
-        N::from_u128((v & (&mask)).to_u128().unwrap()),
-        N::from_u128(((v >> BIT_COUNT) & mask.clone()).to_u128().unwrap()),
-        N::from_u128(((v >> BIT_COUNT * 2) & mask.clone()).to_u128().unwrap()), // TODO: assert no more than 40?
-    ]
 }
 
 fn get_scalar_from_cell<C: CurveAffine, N: FieldExt>(
@@ -347,7 +337,7 @@ mod tests {
         )
         .unwrap();
 
-        let res = split_biguint::<Fr>(&v);
+        let res = super::circuits_test::split_biguint::<Fr>(&v);
         assert_eq!(res, [Fr::from_u128(0b100111100010011101111111001000011011001101011010011000001011010010001111110001000111011001101001100101111000), Fr::from_u128(0b000000110100111101111110100010100101001000111000000000110000010010110101000110101100001111000000100010010110), Fr::from_u128(0b111110011110010011110110001100010001101)]);
     }
 }
@@ -364,6 +354,7 @@ pub mod circuits_test {
         plonk::{Advice, Circuit, Column},
     };
     use num_traits::Num;
+    use num_traits::{FromPrimitive, ToPrimitive};
 
     #[derive(Clone)]
     struct TestConfig {
@@ -586,6 +577,19 @@ pub mod circuits_test {
 
     fn modulus<F: PrimeField>() -> BigUint {
         to_biguint(&-F::one()) + 1u64
+    }
+
+    pub fn split_biguint<N: FieldExt>(v: &BigUint) -> [N; 3] {
+        const BIT_COUNT: u32 = 108;
+        const MASK: u128 = (1u128 << BIT_COUNT) - 1;
+
+        let mask = BigUint::from_u128(MASK).unwrap();
+
+        [
+            N::from_u128((v & (&mask)).to_u128().unwrap()),
+            N::from_u128(((v >> BIT_COUNT) & mask.clone()).to_u128().unwrap()),
+            N::from_u128(((v >> BIT_COUNT * 2) & mask.clone()).to_u128().unwrap()), // TODO: assert no more than 40?
+        ]
     }
 
     pub fn test_circuits<C: CurveAffine, N: FieldExt>(count: usize) {

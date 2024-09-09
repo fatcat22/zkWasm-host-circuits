@@ -6,6 +6,7 @@ use crate::circuits::CommonGateConfig;
 use crate::host::jubjub::Point;
 use crate::host::ExternalHostCallEntry;
 use crate::host::ForeignInst::{JubjubSumNew, JubjubSumPush, JubjubSumResult};
+use crate::proof::HostExtraInput;
 use crate::utils::Limb;
 use ark_std::{end_timer, start_timer};
 use halo2_proofs::arithmetic::FieldExt;
@@ -76,6 +77,7 @@ impl HostOpSelector for AltJubChip<Fr> {
         offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
+        _extra: &HostExtraInput<Fr>,
         config: &HostOpConfig,
     ) -> Result<Vec<Limb<Fr>>, Error> {
         println!("host op assign {}!", offset);

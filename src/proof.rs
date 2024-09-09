@@ -4,6 +4,7 @@ use crate::circuits::{
     bls::Bls381SumChip,
     bn256::Bn256PairChip,
     bn256::Bn256SumChip,
+    ecdsa::EcdsaChip,
     host::{HostOpChip, HostOpConfig, HostOpSelector},
     keccak256::KeccakChip,
     merkle::MerkleChip,
@@ -23,7 +24,7 @@ use circuits_batcher::args::HashType::Poseidon;
 use circuits_batcher::args::OpenSchema;
 use circuits_batcher::proof::{ParamsCache, ProofGenerationInfo, ProofPieceInfo, ProvingKeyCache};
 
-use crate::host::ExternalHostCallEntryTable;
+use crate::host::{HostExtraInputRaw, HostInput};
 use serde::{Deserialize, Serialize};
 
 pub const MERKLE_DEPTH: usize = 32;
@@ -43,12 +44,33 @@ pub enum OpType {
     KECCAKHASH,
     MERKLE,
     JUBJUBSUM,
+    ECDSASECP256R1,
+}
+
+#[derive(Clone, Default, Debug)]
+pub struct HostExtraInput<F> {
+    pub commitment: Option<[F; 4]>,
+}
+
+impl<F: FieldExt> From<&HostExtraInputRaw> for HostExtraInput<F> {
+    fn from(value: &HostExtraInputRaw) -> Self {
+        let commitment = value.commitment.map(|v| {
+            v.iter()
+                .map(|v| F::from_u128(*v as u128))
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap()
+        });
+
+        Self { commitment }
+    }
 }
 
 #[derive(Clone)]
 pub struct HostOpCircuit<F: FieldExt, S: HostOpSelector> {
     shared_operands: Vec<F>,
     shared_opcodes: Vec<F>,
+    extra: HostExtraInput<F>,
     helper: S::Helper,
     k: usize,
     _marker: PhantomData<(F, S)>,
@@ -59,6 +81,7 @@ impl<F: FieldExt, S: HostOpSelector> Default for HostOpCircuit<F, S> {
         HostOpCircuit {
             shared_operands: Vec::<F>::default(),
             shared_opcodes: Vec::<F>::default(),
+            extra: HostExtraInput::default(),
             k: 22,
             helper: S::Helper::default(),
             _marker: PhantomData,
@@ -104,12 +127,14 @@ impl<S: HostOpSelector> Circuit<Fr> for HostOpCircuit<Fr, S> {
             || "filter operands and opcodes",
             |region| {
                 let mut offset = 0;
+                println!("extra: {:?}", self.extra);
                 let all_arg_cells = host_op_chip.assign(
                     &region,
                     self.k,
                     &mut offset,
                     &self.shared_operands,
                     &self.shared_opcodes,
+                    &self.extra,
                 )?;
                 let mut selector_chip = S::construct(config.selectconfig.clone());
 
@@ -124,9 +149,9 @@ impl<S: HostOpSelector> Circuit<Fr> for HostOpCircuit<Fr, S> {
     }
 }
 
-pub fn read_host_call_table(input_file: PathBuf) -> ExternalHostCallEntryTable {
+pub fn read_host_call_table(input_file: PathBuf) -> HostInput {
     let file = File::open(input_file).expect("File does not exist");
-    let v: ExternalHostCallEntryTable = match serde_json::from_reader(BufReader::new(file)) {
+    let v = match serde_json::from_reader(BufReader::new(file)) {
         Err(e) => {
             println!("load json error {:?}", e);
             unreachable!();
@@ -137,17 +162,19 @@ pub fn read_host_call_table(input_file: PathBuf) -> ExternalHostCallEntryTable {
 }
 
 pub fn build_host_circuit<S: HostOpSelector>(
-    v: &ExternalHostCallEntryTable,
+    v: &HostInput,
     k: usize,
     helper: S::Helper,
 ) -> HostOpCircuit<Fr, S> {
     // Prepare the private and public inputs to the circuit!
-    let shared_operands = v.0.iter().map(|x| Fr::from(x.value as u64)).collect();
-    let shared_opcodes = v.0.iter().map(|x| Fr::from(x.op as u64)).collect();
+    let shared_operands = v.table.0.iter().map(|x| Fr::from(x.value as u64)).collect();
+    let shared_opcodes = v.table.0.iter().map(|x| Fr::from(x.op as u64)).collect();
+    let extra = HostExtraInput::from(&v.extra);
 
     HostOpCircuit::<Fr, S> {
         shared_operands,
         shared_opcodes,
+        extra,
         k,
         helper,
         _marker: PhantomData,
@@ -157,7 +184,7 @@ pub fn build_host_circuit<S: HostOpSelector>(
 pub fn exec_create_host_proof(
     name: &str,
     k: usize,
-    v: &ExternalHostCallEntryTable,
+    v: &HostInput,
     opname: OpType,
     cache_folder: &PathBuf,
     param_folder: &PathBuf,
@@ -220,6 +247,10 @@ pub fn exec_create_host_proof(
         }
         OpType::KECCAKHASH => {
             let circuit = build_host_circuit::<KeccakChip<Fr>>(&v, k, ());
+            gen_proof!(circuit);
+        }
+        OpType::ECDSASECP256R1 => {
+            let circuit = build_host_circuit::<EcdsaChip<Fr>>(v, k, ());
             gen_proof!(circuit);
         }
     };

@@ -163,8 +163,11 @@ mod tests {
                 inputs.append(&mut create_bn256_sum_input(new, a_j, g_j, z));
             }
         }
-        let table = ExternalHostCallEntryTable(inputs);
+        let input = crate::host::HostInput {
+            table: ExternalHostCallEntryTable(inputs),
+            extra: Default::default(),
+        };
         let file = File::create("bn256sumtest.json").expect("can not create file");
-        serde_json::to_writer_pretty(file, &table).expect("can not write to file");
+        serde_json::to_writer_pretty(file, &input).expect("can not write to file");
     }
 }
