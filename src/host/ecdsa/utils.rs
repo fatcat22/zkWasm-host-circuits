@@ -1,11 +1,11 @@
 use crate::{
     host::{ExternalHostCallEntry, ForeignInst},
-    utils::field_to_bn,
+    utils::{bn_to_field, field_to_bn},
 };
 use ff::{Field, PrimeField};
 use halo2_proofs::arithmetic::{BaseExt, CurveAffine};
 use num_bigint::BigUint;
-use num_traits::{Num, Zero};
+use num_traits::{Num, One, Zero};
 
 #[derive(Debug)]
 pub struct EcdsaSignatureMaterials<C: CurveAffine> {
@@ -131,6 +131,19 @@ pub fn field_to_u64_array<F: BaseExt, const N: usize, const B: usize>(f: &F) -> 
     result
 }
 
+pub fn u64_array_to_field<F: BaseExt, const N: usize, const B: usize>(arr: &[u64; N]) -> F {
+    assert!(N * B >= 256);
+    assert!(B <= 64);
+
+    let one = BigUint::one();
+    let mut bn = BigUint::zero();
+    for (i, v) in arr.iter().enumerate() {
+        bn += BigUint::from(*v) * (one.clone() << (B * i));
+    }
+
+    bn_to_field(&bn)
+}
+
 fn from_hex_str<T: PrimeField>(s: &str) -> T {
     T::from_str_vartime(&format!("{}", BigUint::from_str_radix(s, 16).unwrap())).unwrap()
 }
@@ -141,4 +154,20 @@ fn to_biguint<F: ff::Field>(f: &F) -> BigUint {
 
 fn modulus<F: PrimeField>() -> BigUint {
     to_biguint(&-F::one()) + 1u64
+}
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::pairing::bn256::Fr;
+
+    use super::*;
+
+    #[test]
+    fn test_field_u64_array_convert() {
+        let expect = Fr::rand();
+        let arr = field_to_u64_array::<_, 4, 64>(&expect);
+        let f = u64_array_to_field::<Fr, 4, 64>(&arr);
+
+        assert_eq!(f, expect, "expect:{:?}, arr:{:?}, f:{:?}", expect, arr, f);
+    }
 }

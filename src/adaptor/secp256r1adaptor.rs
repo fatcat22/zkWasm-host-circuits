@@ -4,7 +4,6 @@ use crate::{
         host::{HostOpConfig, HostOpSelector},
     },
     host::{ecdsa, secp256r1, ExternalHostCallEntry, ForeignInst},
-    proof::HostExtraInput,
     utils::Limb,
 };
 use halo2_proofs::{
@@ -92,7 +91,6 @@ impl HostOpSelector for EcdsaChip<Fr> {
         offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
-        extra: &HostExtraInput<Fr>,
         config: &HostOpConfig,
     ) -> Result<Vec<Limb<Fr>>, Error> {
         let opcodes = Self::opcodes();
@@ -105,25 +103,6 @@ impl HostOpSelector for EcdsaChip<Fr> {
         assert_eq!(*offset, 0);
 
         let mut r = Vec::new();
-
-        // TODO: assign to instance(and then ls[0] in EcdsaChip::verify argument is not lambda)
-        let enable_commitment = extra.commitment.is_some();
-        let commitment = extra.commitment.unwrap_or([Fr::zero(); 4]);
-        let (op, _) = assign_merged(
-            region,
-            offset,
-            config,
-            vec![
-                &((commitment[0], Fr::zero()), Fr::zero()),
-                &((commitment[1], Fr::zero()), Fr::zero()),
-                &((commitment[2], Fr::zero()), Fr::zero()),
-                &((commitment[3], Fr::zero()), Fr::zero()),
-            ],
-            Fr::from_u128(1u128 << 64),
-            enable_commitment,
-        )?;
-        println!("commitment in adaptor: {:?}", op.value);
-        r.push(op);
 
         r.append(&mut assign_entries(
             region,

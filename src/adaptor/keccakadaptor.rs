@@ -67,7 +67,6 @@ impl HostOpSelector for KeccakChip<Fr> {
         offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
-        _extra: &HostExtraInput<Fr>,
         config: &HostOpConfig,
     ) -> Result<Vec<Limb<Fr>>, Error> {
         let opcodes: Vec<Fr> = Self::opcodes();

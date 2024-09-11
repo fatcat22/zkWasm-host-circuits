@@ -10,6 +10,7 @@ use crate::circuits::{
     merkle::MerkleChip,
     poseidon::PoseidonChip,
 };
+use crate::host::ecdsa::utils::u64_array_to_field;
 use halo2_proofs::circuit::floor_planner::FlatFloorPlanner;
 use halo2_proofs::pairing::bn256::Bn256;
 use halo2_proofs::{
@@ -49,18 +50,12 @@ pub enum OpType {
 
 #[derive(Clone, Default, Debug)]
 pub struct HostExtraInput<F> {
-    pub commitment: Option<[F; 4]>,
+    pub commitment: Option<F>,
 }
 
 impl<F: FieldExt> From<&HostExtraInputRaw> for HostExtraInput<F> {
     fn from(value: &HostExtraInputRaw) -> Self {
-        let commitment = value.commitment.map(|v| {
-            v.iter()
-                .map(|v| F::from_u128(*v as u128))
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap()
-        });
+        let commitment = value.commitment.map(|v| u64_array_to_field::<F, 4, 64>(&v));
 
         Self { commitment }
     }
@@ -71,6 +66,7 @@ pub struct HostOpCircuit<F: FieldExt, S: HostOpSelector> {
     shared_operands: Vec<F>,
     shared_opcodes: Vec<F>,
     extra: HostExtraInput<F>,
+    pub instances: Vec<Vec<F>>,
     helper: S::Helper,
     k: usize,
     _marker: PhantomData<(F, S)>,
@@ -82,6 +78,7 @@ impl<F: FieldExt, S: HostOpSelector> Default for HostOpCircuit<F, S> {
             shared_operands: Vec::<F>::default(),
             shared_opcodes: Vec::<F>::default(),
             extra: HostExtraInput::default(),
+            instances: Vec::new(),
             k: 22,
             helper: S::Helper::default(),
             _marker: PhantomData,
@@ -134,7 +131,6 @@ impl<S: HostOpSelector> Circuit<Fr> for HostOpCircuit<Fr, S> {
                     &mut offset,
                     &self.shared_operands,
                     &self.shared_opcodes,
-                    &self.extra,
                 )?;
                 let mut selector_chip = S::construct(config.selectconfig.clone());
 
@@ -171,10 +167,17 @@ pub fn build_host_circuit<S: HostOpSelector>(
     let shared_opcodes = v.table.0.iter().map(|x| Fr::from(x.op as u64)).collect();
     let extra = HostExtraInput::from(&v.extra);
 
+    let instances = if let Some(c) = extra.commitment {
+        vec![c]
+    } else {
+        Vec::new()
+    };
+
     HostOpCircuit::<Fr, S> {
         shared_operands,
         shared_opcodes,
         extra,
+        instances: vec![instances],
         k,
         helper,
         _marker: PhantomData,
@@ -195,14 +198,14 @@ pub fn exec_create_host_proof(
     let mut params_cache = ParamsCache::<Bn256>::new(5, param_folder.clone());
     let mut pkey_cache = ProvingKeyCache::new(5, param_folder.clone());
     macro_rules! gen_proof {
-        ($circuit: expr) => {
+        ($circuit: expr, $instances: expr) => {
             let prover: ProofPieceInfo =
                 ProofPieceInfo::new(format!("{}.{:?}", name, opname), 0, 0);
             let mut proof_gen_info =
                 ProofGenerationInfo::new(format!("{}.{:?}", name, opname).as_str(), k, Poseidon);
             let proof = prover.exec_create_proof(
                 &$circuit,
-                &vec![],
+                &$instances,
                 k,
                 &mut pkey_cache,
                 &mut params_cache,
@@ -219,39 +222,39 @@ pub fn exec_create_host_proof(
     match opname {
         OpType::BLS381PAIR => {
             let circuit = build_host_circuit::<Bls381PairChip<Fr>>(&v, k, ());
-            gen_proof!(circuit);
+            gen_proof!(circuit, circuit.instances);
         }
         OpType::BLS381SUM => {
             let circuit = build_host_circuit::<Bls381SumChip<Fr>>(&v, k, ());
-            gen_proof!(circuit);
+            gen_proof!(circuit, circuit.instances);
         }
         OpType::BN256PAIR => {
             let circuit = build_host_circuit::<Bn256PairChip<Fr>>(&v, k, ());
-            gen_proof!(circuit);
+            gen_proof!(circuit, circuit.instances);
         }
         OpType::BN256SUM => {
             let circuit = build_host_circuit::<Bn256SumChip<Fr>>(&v, k, ());
-            gen_proof!(circuit);
+            gen_proof!(circuit, circuit.instances);
         }
         OpType::POSEIDONHASH => {
             let circuit = build_host_circuit::<PoseidonChip<Fr, 9, 8>>(&v, k, ());
-            gen_proof!(circuit);
+            gen_proof!(circuit, circuit.instances);
         }
         OpType::MERKLE => {
             let circuit = build_host_circuit::<MerkleChip<Fr, MERKLE_DEPTH>>(&v, k, None);
-            gen_proof!(circuit);
+            gen_proof!(circuit, circuit.instances);
         }
         OpType::JUBJUBSUM => {
             let circuit = build_host_circuit::<AltJubChip<Fr>>(&v, k, ());
-            gen_proof!(circuit);
+            gen_proof!(circuit, circuit.instances);
         }
         OpType::KECCAKHASH => {
             let circuit = build_host_circuit::<KeccakChip<Fr>>(&v, k, ());
-            gen_proof!(circuit);
+            gen_proof!(circuit, circuit.instances);
         }
         OpType::ECDSASECP256R1 => {
             let circuit = build_host_circuit::<EcdsaChip<Fr>>(v, k, ());
-            gen_proof!(circuit);
+            gen_proof!(circuit, circuit.instances);
         }
     };
 

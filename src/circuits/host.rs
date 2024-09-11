@@ -230,7 +230,6 @@ pub trait HostOpSelector {
         offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
-        extra: &HostExtraInput<Fr>,
         config: &HostOpConfig,
     ) -> Result<Vec<Limb<Fr>>, Error>;
     fn synthesize(
@@ -309,7 +308,6 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
         arg_offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
-        extra: &HostExtraInput<Fr>,
     ) -> Result<Vec<Limb<Fr>>, Error> {
         let selected_length =
             get_selected_entries(shared_operands, shared_opcodes, &S::opcodes()).len();
@@ -422,7 +420,6 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
             &mut local_offset,
             shared_operands,
             shared_opcodes,
-            extra,
             &self.config,
         )?;
         *arg_offset = local_offset;

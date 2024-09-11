@@ -1,6 +1,7 @@
 use ark_std::{end_timer, start_timer};
 use ff::Field;
 use halo2_proofs::arithmetic::CurveAffine;
+use halo2_proofs::plonk::{Column, Instance};
 use halo2_proofs::{
     arithmetic::{BaseExt, FieldExt},
     circuit::{AssignedCell, Chip, Layouter, Region},
@@ -37,6 +38,7 @@ pub struct EcdsaChipConfig {
     base_chip_config: BaseChipConfig,
     range_chip_config: RangeChipConfig,
     point_select_chip_config: SelectChipConfig,
+    commitment: Column<Instance>,
 }
 
 pub struct EcdsaChip<N: FieldExt> {
@@ -76,6 +78,7 @@ impl<N: FieldExt> EcdsaChip<N> {
             base_chip_config: BaseChip::configure(cs),
             range_chip_config: RangeChip::<N>::configure(cs),
             point_select_chip_config: SelectChip::configure(cs),
+            commitment: cs.instance_column(),
         }
     }
 
@@ -88,9 +91,6 @@ impl<N: FieldExt> EcdsaChip<N> {
         ls: &Vec<Limb<N>>,
         layouter: &impl Layouter<N>,
     ) -> Result<(), Error> {
-        if ls.is_empty() {
-            return Ok(());
-        }
         let context = Rc::new(RefCell::new(Context::new()));
         let mut ctx = GeneralScalarEccContext::<C, _>::new(context);
 
@@ -393,10 +393,6 @@ pub mod circuits_test {
                     let mut offset = 0;
                     let mut result = Vec::new();
 
-                    if self == &Self::default() {
-                        return Ok(Vec::new());
-                    }
-
                     let cell = Limb::new(
                         Some(region.assign_advice(
                             || "lambda",
@@ -408,6 +404,10 @@ pub mod circuits_test {
                     );
                     offset += 1;
                     result.push(cell);
+
+                    if self == &Self::default() {
+                        return Ok(Vec::new());
+                    }
 
                     for input in &self.inputs {
                         for x in input.pk_x {
