@@ -200,6 +200,7 @@ impl HostOpSelector for PoseidonChip<Fr, 9, 8> {
     fn synthesize_separate(
         &mut self,
         _arg_cells: &Vec<Limb<Fr>>,
+        _extra: &HostExtraInput<Fr>,
         _layouter: &impl Layouter<Fr>,
     ) -> Result<(), Error> {
         Ok(())
@@ -209,6 +210,7 @@ impl HostOpSelector for PoseidonChip<Fr, 9, 8> {
         &mut self,
         offset: &mut usize,
         arg_cells: &Vec<Limb<Fr>>,
+        _extra: &HostExtraInput<Fr>,
         region: &Region<Fr>,
         _helper: &(),
     ) -> Result<(), Error> {

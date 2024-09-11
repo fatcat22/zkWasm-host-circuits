@@ -261,6 +261,7 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
     fn synthesize_separate(
         &mut self,
         _arg_cells: &Vec<Limb<Fr>>,
+        _extra: &HostExtraInput<Fr>,
         _layouter: &impl Layouter<Fr>,
     ) -> Result<(), Error> {
         Ok(())
@@ -270,6 +271,7 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
         &mut self,
         offset: &mut usize,
         arg_cells: &Vec<Limb<Fr>>,
+        _extra: &HostExtraInput<Fr>,
         region: &Region<Fr>,
         helper: &Self::Helper,
     ) -> Result<(), Error> {

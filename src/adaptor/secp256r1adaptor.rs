@@ -4,6 +4,7 @@ use crate::{
         host::{HostOpConfig, HostOpSelector},
     },
     host::{ecdsa, secp256r1, ExternalHostCallEntry, ForeignInst},
+    proof::HostExtraInput,
     utils::Limb,
 };
 use halo2_proofs::{
@@ -127,10 +128,11 @@ impl HostOpSelector for EcdsaChip<Fr> {
     fn synthesize_separate(
         &mut self,
         arg_cells: &Vec<Limb<Fr>>,
+        extra: &HostExtraInput<Fr>,
         layouter: &impl Layouter<Fr>,
     ) -> Result<(), Error> {
         self.range_chip.init_table(layouter)?;
-        self.verify::<secp256r1::Secp256r1Affine>(&arg_cells, layouter)?;
+        self.verify::<secp256r1::Secp256r1Affine>(extra, &arg_cells, layouter)?;
         Ok(())
     }
 
@@ -138,6 +140,7 @@ impl HostOpSelector for EcdsaChip<Fr> {
         &mut self,
         _offset: &mut usize,
         _arg_cells: &Vec<Limb<Fr>>,
+        _extra: &HostExtraInput<Fr>,
         _region: &Region<Fr>,
         _helper: &(),
     ) -> Result<(), Error> {

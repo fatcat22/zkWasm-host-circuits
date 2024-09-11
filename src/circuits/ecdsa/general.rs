@@ -29,6 +29,7 @@ use halo2ecc_s::{
     context::{Context, GeneralScalarEccContext},
 };
 
+use crate::proof::HostExtraInput;
 use crate::utils::Limb;
 use num_bigint::BigUint;
 use std::ops::{AddAssign, Mul};
@@ -74,11 +75,14 @@ impl<N: FieldExt> EcdsaChip<N> {
     }
 
     pub fn configure(cs: &mut ConstraintSystem<N>) -> <Self as Chip<N>>::Config {
+        let commitment = cs.instance_column();
+        cs.enable_equality(commitment);
+
         EcdsaChipConfig {
             base_chip_config: BaseChip::configure(cs),
             range_chip_config: RangeChip::<N>::configure(cs),
             point_select_chip_config: SelectChip::configure(cs),
-            commitment: cs.instance_column(),
+            commitment,
         }
     }
 
@@ -88,6 +92,7 @@ impl<N: FieldExt> EcdsaChip<N> {
     /// meaning:  pk_x | pk_y  | pk_is_identity | msg_hash |    r     |     s    |    r_y   | r_is_identity
     pub fn verify<C: CurveAffine>(
         &self,
+        extra: &HostExtraInput<N>,
         ls: &Vec<Limb<N>>,
         layouter: &impl Layouter<N>,
     ) -> Result<(), Error> {
@@ -98,16 +103,20 @@ impl<N: FieldExt> EcdsaChip<N> {
         // TODO: ctx.assign_nonzero_point is better?
         let g = ctx.assign_constant_point(&C::generator().to_curve());
         // TODO: constrain lambda equals ls[0]
-        let ls0 = ls.get(0).map(|v| v.value).unwrap_or(N::zero());
-        let lambda =
-            BigUint::from_str_radix(format!("{:?}", ls0).strip_prefix("0x").unwrap(), 16).unwrap();
+        // let ls0 = ls.get(0).map(|v| v.value).unwrap_or(N::zero());
+        let lambda = BigUint::from_str_radix(
+            format!("{:?}", extra.commitment.unwrap_or(N::zero()))
+                .strip_prefix("0x")
+                .unwrap(),
+            16,
+        )
+        .unwrap();
         println!("lambda: 0x{:x}", lambda);
         let lambda = ctx.scalar_integer_ctx.assign_w(&lambda);
+
         let negtive_one = ctx
             .scalar_integer_ctx
             .assign_int_constant(-C::ScalarExt::one());
-
-        let ls = ls.get(1..).unwrap_or_default();
 
         // collect points for msm
         let points = ls
@@ -175,7 +184,7 @@ impl<N: FieldExt> EcdsaChip<N> {
         enable_point_permute(&mut ctx, &expect);
 
         let records = Into::<Context<N>>::into(ctx).records;
-        layouter.assign_region(
+        let assigned_lambda_native = layouter.assign_region(
             || "assign ecdsa verify",
             |mut region| {
                 let timer = start_timer!(|| "assign ecdsa verify");
@@ -189,9 +198,11 @@ impl<N: FieldExt> EcdsaChip<N> {
                 enable_g1affine_identity_permute(&mut region, &cells, &result, &expect)?;
 
                 end_timer!(timer);
-                Ok(())
+                Ok(get_cell_of_ctx(&cells, &lambda.native.cell))
             },
         )?;
+
+        layouter.constrain_instance(assigned_lambda_native.cell(), self.config.commitment, 0)?;
         Ok(())
     }
 }
@@ -376,7 +387,7 @@ pub mod circuits_test {
 
     #[derive(Debug, PartialEq, Default)]
     struct TestCircuit<N, C> {
-        lambda: N,
+        extra: HostExtraInput<N>,
         inputs: Vec<ECDSAInput<N>>,
         _marker: PhantomData<C>,
     }
@@ -392,18 +403,6 @@ pub mod circuits_test {
                 |region| {
                     let mut offset = 0;
                     let mut result = Vec::new();
-
-                    let cell = Limb::new(
-                        Some(region.assign_advice(
-                            || "lambda",
-                            input_column.clone(),
-                            offset,
-                            || Ok(self.lambda),
-                        )?),
-                        self.lambda,
-                    );
-                    offset += 1;
-                    result.push(cell);
 
                     if self == &Self::default() {
                         return Ok(Vec::new());
@@ -563,7 +562,7 @@ pub mod circuits_test {
             let inputs = self.assign_input(&config.input, layouter.namespace(|| "assign input"))?;
 
             chip.range_chip.init_table(&layouter)?;
-            chip.verify::<C>(&inputs, &layouter)
+            chip.verify::<C>(&self.extra, &inputs, &layouter)
         }
     }
 
@@ -642,13 +641,16 @@ pub mod circuits_test {
             })
             .collect();
 
+        let extra = HostExtraInput {
+            commitment: Some(N::rand()),
+        };
         let circuit = TestCircuit::<_, C> {
-            lambda: N::rand(),
+            extra: extra.clone(),
             inputs,
             _marker: PhantomData,
         };
 
-        let prover = MockProver::run(23, &circuit, Vec::new()).unwrap();
+        let prover = MockProver::run(23, &circuit, vec![vec![extra.commitment.unwrap()]]).unwrap();
         assert_eq!(prover.verify(), Ok(()));
     }
 }

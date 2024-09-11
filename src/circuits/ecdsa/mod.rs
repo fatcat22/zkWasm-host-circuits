@@ -7,14 +7,15 @@ use halo2_proofs::{arithmetic::FieldExt, circuit::Layouter, plonk::Error};
 
 pub mod secp256r1 {
     use super::*;
-    use crate::host::secp256r1;
+    use crate::{host::secp256r1, proof::HostExtraInput};
 
     pub fn verify<N: FieldExt>(
         chip: &general::EcdsaChip<N>,
         inputs: &Vec<Limb<N>>,
+        extra: &HostExtraInput<N>,
         layouter: &impl Layouter<N>,
     ) -> Result<(), Error> {
-        chip.verify::<secp256r1::Secp256r1Affine>(inputs, layouter)
+        chip.verify::<secp256r1::Secp256r1Affine>(extra, inputs, layouter)
     }
 
     #[cfg(test)]

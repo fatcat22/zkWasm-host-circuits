@@ -48,7 +48,7 @@ pub enum OpType {
     ECDSASECP256R1,
 }
 
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Default, Debug, PartialEq)]
 pub struct HostExtraInput<F> {
     pub commitment: Option<F>,
 }
@@ -136,11 +136,17 @@ impl<S: HostOpSelector> Circuit<Fr> for HostOpCircuit<Fr, S> {
 
                 println!("total arg cells: {:?}", all_arg_cells.len());
                 println!("selector offset start at: {:?}", offset);
-                selector_chip.synthesize(&mut offset, &all_arg_cells, &region, &self.helper)?;
+                selector_chip.synthesize(
+                    &mut offset,
+                    &all_arg_cells,
+                    &self.extra,
+                    &region,
+                    &self.helper,
+                )?;
                 Ok((all_arg_cells, selector_chip))
             },
         )?;
-        selector_chip.synthesize_separate(&all_arg_cells, &layouter)?;
+        selector_chip.synthesize_separate(&all_arg_cells, &self.extra, &layouter)?;
         Ok(())
     }
 }

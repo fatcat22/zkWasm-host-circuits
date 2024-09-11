@@ -18,6 +18,7 @@ const BLSSUM_SIZE: usize = 1 + BLS381FR_SIZE + 2 * BLS381G1_SIZE;
 use crate::circuits::bls::{Bls381ChipConfig, Bls381PairChip, Bls381SumChip};
 
 use crate::circuits::host::{HostOpConfig, HostOpSelector};
+use crate::proof::HostExtraInput;
 use crate::utils::Limb;
 
 use super::get_selected_entries;
@@ -293,6 +294,7 @@ impl HostOpSelector for Bls381PairChip<Fr> {
     fn synthesize_separate(
         &mut self,
         arg_cells: &Vec<Limb<Fr>>,
+        _extra: &HostExtraInput<Fr>,
         layouter: &impl Layouter<Fr>,
     ) -> Result<(), Error> {
         self.range_chip.init_table(layouter)?;
@@ -307,6 +309,7 @@ impl HostOpSelector for Bls381PairChip<Fr> {
         &mut self,
         _offset: &mut usize,
         _arg_cells: &Vec<Limb<Fr>>,
+        _extra: &HostExtraInput<Fr>,
         _local_region: &Region<Fr>,
         _helper: &(),
     ) -> Result<(), Error> {
@@ -519,6 +522,7 @@ impl HostOpSelector for Bls381SumChip<Fr> {
     fn synthesize_separate(
         &mut self,
         arg_cells: &Vec<Limb<Fr>>,
+        _extra: &HostExtraInput<Fr>,
         layouter: &impl Layouter<Fr>,
     ) -> Result<(), Error> {
         self.range_chip.init_table(layouter)?;
@@ -530,6 +534,7 @@ impl HostOpSelector for Bls381SumChip<Fr> {
         &mut self,
         _offset: &mut usize,
         _arg_cells: &Vec<Limb<Fr>>,
+        _extra: &HostExtraInput<Fr>,
         _local_region: &Region<Fr>,
         _helper: &(),
     ) -> Result<(), Error> {

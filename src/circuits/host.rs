@@ -236,12 +236,14 @@ pub trait HostOpSelector {
         &mut self,
         offset: &mut usize,
         arg_cells: &Vec<Limb<Fr>>,
+        extra: &HostExtraInput<Fr>,
         region: &Region<Fr>,
         helper: &Self::Helper,
     ) -> Result<(), Error>;
     fn synthesize_separate(
         &mut self,
         arg_cells: &Vec<Limb<Fr>>,
+        extra: &HostExtraInput<Fr>,
         layouter: &impl Layouter<Fr>,
     ) -> Result<(), Error>;
 }

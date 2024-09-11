@@ -390,6 +390,7 @@ impl HostOpSelector for Bn256PairChip<Fr> {
     fn synthesize_separate(
         &mut self,
         arg_cells: &Vec<Limb<Fr>>,
+        _extra: &HostExtraInput<Fr>,
         layouter: &impl Layouter<Fr>,
     ) -> Result<(), Error> {
         self.range_chip.init_table(layouter)?;
@@ -405,6 +406,7 @@ impl HostOpSelector for Bn256PairChip<Fr> {
         &mut self,
         _offset: &mut usize,
         _arg_cells: &Vec<Limb<Fr>>,
+        _extra: &HostExtraInput<Fr>,
         _region: &Region<Fr>,
         _helper: &(),
     ) -> Result<(), Error> {
@@ -626,6 +628,7 @@ impl HostOpSelector for Bn256SumChip<Fr> {
     fn synthesize_separate(
         &mut self,
         arg_cells: &Vec<Limb<Fr>>,
+        _extra: &HostExtraInput<Fr>,
         layouter: &impl Layouter<Fr>,
     ) -> Result<(), Error> {
         self.range_chip.init_table(layouter)?;
@@ -637,6 +640,7 @@ impl HostOpSelector for Bn256SumChip<Fr> {
         &mut self,
         _offset: &mut usize,
         _arg_cells: &Vec<Limb<Fr>>,
+        _extra: &HostExtraInput<Fr>,
         _region: &Region<Fr>,
         _helper: &(),
     ) -> Result<(), Error> {
