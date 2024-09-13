@@ -222,23 +222,29 @@ impl HostOpSelector for AltJubChip<Fr> {
 mod tests {
     use super::msm_to_host_call_table;
     use crate::host::jubjub::Point;
-    use crate::host::ExternalHostCallEntryTable;
+    use crate::host::{ExternalHostCallEntryTable, HostInput};
     use halo2_proofs::pairing::bn256::Fr;
     use std::fs::File;
 
     #[test]
     fn generate_jubjub_msm_input() {
         let default_table = msm_to_host_call_table(&vec![(Point::identity(), Fr::one())]);
+        let input = HostInput {
+            table: ExternalHostCallEntryTable(default_table),
+            extra: Default::default(),
+        };
         let file = File::create("jubjub.json").expect("can not create file");
-        serde_json::to_writer_pretty(file, &ExternalHostCallEntryTable(default_table))
-            .expect("can not write to file");
+        serde_json::to_writer_pretty(file, &input).expect("can not write to file");
     }
 
     #[test]
     fn generate_jubjub_msm_input_multi() {
         let default_table = msm_to_host_call_table(&vec![(Point::identity(), Fr::one())]);
+        let input = HostInput {
+            table: ExternalHostCallEntryTable(default_table),
+            extra: Default::default(),
+        };
         let file = File::create("jubjub_multi.json").expect("can not create file");
-        serde_json::to_writer_pretty(file, &ExternalHostCallEntryTable(default_table))
-            .expect("can not write to file");
+        serde_json::to_writer_pretty(file, &input).expect("can not write to file");
     }
 }

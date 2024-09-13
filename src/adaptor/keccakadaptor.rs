@@ -223,7 +223,7 @@ impl HostOpSelector for KeccakChip<Fr> {
 #[cfg(test)]
 mod tests {
     use crate::host::ForeignInst::{Keccak256Finalize, Keccak256New, Keccak256Push};
-    use crate::host::{ExternalHostCallEntry, ExternalHostCallEntryTable};
+    use crate::host::{ExternalHostCallEntry, ExternalHostCallEntryTable, HostInput};
     use crate::utils::field_to_u64;
     use halo2_proofs::pairing::bn256::Fr;
     use std::fs::File;
@@ -280,8 +280,12 @@ mod tests {
             Fr::zero(),
             Fr::from(1u64 << 63),
         ]]);
+        let input = HostInput {
+            table,
+            extra: Default::default(),
+        };
         let file = File::create("keccak256_test.json").expect("can not create file");
-        serde_json::to_writer_pretty(file, &table).expect("can not write to file");
+        serde_json::to_writer_pretty(file, &input).expect("can not write to file");
     }
 
     #[test]
@@ -308,8 +312,12 @@ mod tests {
                 Fr::from(1u64 << 63),
             ],
         ]);
+        let input = HostInput {
+            table,
+            extra: Default::default(),
+        };
         let file = File::create("keccak256_test_multi.json").expect("can not create file");
-        serde_json::to_writer_pretty(file, &table).expect("can not write to file");
+        serde_json::to_writer_pretty(file, &input).expect("can not write to file");
     }
 
     #[test]
@@ -389,7 +397,11 @@ mod tests {
                 Fr::from(1u64 << 63),
             ],
         ]);
+        let input = HostInput {
+            table,
+            extra: Default::default(),
+        };
         let file = File::create("keccak256_test_multi_byte.json").expect("can not create file");
-        serde_json::to_writer_pretty(file, &table).expect("can not write to file");
+        serde_json::to_writer_pretty(file, &input).expect("can not write to file");
     }
 }

@@ -174,7 +174,7 @@ pub fn build_host_circuit<S: HostOpSelector>(
     let extra = HostExtraInput::from(&v.extra);
 
     let instances = if let Some(c) = extra.commitment {
-        vec![c]
+        vec![vec![c]]
     } else {
         Vec::new()
     };
@@ -183,7 +183,7 @@ pub fn build_host_circuit<S: HostOpSelector>(
         shared_operands,
         shared_opcodes,
         extra,
-        instances: vec![instances],
+        instances: instances,
         k,
         helper,
         _marker: PhantomData,

@@ -240,7 +240,7 @@ impl HostOpSelector for PoseidonChip<Fr, 9, 8> {
 
 #[cfg(test)]
 mod tests {
-    use crate::host::{ExternalHostCallEntry, ExternalHostCallEntryTable};
+    use crate::host::{ExternalHostCallEntry, ExternalHostCallEntryTable, HostInput};
     use halo2_proofs::pairing::bn256::Fr;
     use std::fs::File;
 
@@ -282,8 +282,12 @@ mod tests {
             Fr::zero(),
             Fr::zero(),
         ]]);
+        let input = HostInput {
+            table,
+            extra: Default::default(),
+        };
         let file = File::create("poseidontest.json").expect("can not create file");
-        serde_json::to_writer_pretty(file, &table).expect("can not write to file");
+        serde_json::to_writer_pretty(file, &input).expect("can not write to file");
     }
 
     #[test]
@@ -301,7 +305,11 @@ mod tests {
                 Fr::zero(),
             ],
         ]);
+        let input = HostInput {
+            table,
+            extra: Default::default(),
+        };
         let file = File::create("poseidontest_multi.json").expect("can not create file");
-        serde_json::to_writer_pretty(file, &table).expect("can not write to file");
+        serde_json::to_writer_pretty(file, &input).expect("can not write to file");
     }
 }

@@ -352,8 +352,8 @@ mod tests {
     use crate::host::merkle::{MerkleNode, MerkleTree};
     use crate::host::mongomerkle::MongoMerkle;
     use crate::host::mongomerkle::DEFAULT_HASH_VEC;
-    use crate::host::ExternalHostCallEntryTable;
     use crate::host::ForeignInst::{MerkleGet, MerkleSet};
+    use crate::host::{ExternalHostCallEntryTable, HostInput};
     use crate::proof::MERKLE_DEPTH;
     use crate::utils::bytes_to_field;
     use crate::utils::bytes_to_u64;
@@ -397,9 +397,12 @@ mod tests {
                 MerkleSet,
             ),
         ]);
+        let input = HostInput {
+            table: ExternalHostCallEntryTable(default_table),
+            extra: Default::default(),
+        };
         let file = File::create("kvpair_test1.json").expect("can not create file");
-        serde_json::to_writer_pretty(file, &ExternalHostCallEntryTable(default_table))
-            .expect("can not write to file");
+        serde_json::to_writer_pretty(file, &input).expect("can not write to file");
     }
 
     #[test]
@@ -445,8 +448,11 @@ mod tests {
                 MerkleSet,
             ),
         ]);
+        let input = HostInput {
+            table: ExternalHostCallEntryTable(default_table),
+            extra: Default::default(),
+        };
         let file = File::create("kvpair_test2.json").expect("can not create file");
-        serde_json::to_writer_pretty(file, &ExternalHostCallEntryTable(default_table))
-            .expect("can not write to file");
+        serde_json::to_writer_pretty(file, &input).expect("can not write to file");
     }
 }
