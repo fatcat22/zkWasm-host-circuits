@@ -26,7 +26,7 @@ pub mod secp256r1 {
 
         #[test]
         fn test_circuits() {
-            circuits_test::test_circuits::<secp256r1::Secp256r1Affine, Fr>(340);
+            circuits_test::test_circuits::<secp256r1::Secp256r1Affine, Fr, 340>();
         }
     }
 }

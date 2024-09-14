@@ -356,7 +356,7 @@ mod tests {
 #[cfg(test)]
 pub mod circuits_test {
     use super::*;
-    use crate::host::ecdsa;
+    use crate::host::ecdsa::{self, utils::EcdsaSignatureMaterials};
     use ff::PrimeField;
     use halo2_proofs::{
         arithmetic::CurveAffine,
@@ -371,10 +371,11 @@ pub mod circuits_test {
     struct TestConfig {
         chip_config: EcdsaChipConfig,
         input: Column<Advice>,
+        // commitment: Column<Instance>,
     }
 
-    #[derive(Debug, PartialEq, Default)]
-    struct ECDSAInput<N> {
+    #[derive(Debug, PartialEq, Clone, Copy)]
+    struct ECDSAInput<N, C> {
         pk_x: [N; 3],
         pk_y: [N; 3],
         pk_is_identity: bool,
@@ -383,158 +384,174 @@ pub mod circuits_test {
         s: [N; 3],
         r_y: [N; 3],
         r_is_identity: bool,
+
+        _mark: PhantomData<C>,
     }
 
-    #[derive(Debug, PartialEq, Default)]
-    struct TestCircuit<N, C> {
-        extra: HostExtraInput<N>,
-        inputs: Vec<ECDSAInput<N>>,
+    impl<N: FieldExt, C: CurveAffine> Default for ECDSAInput<N, C> {
+        fn default() -> Self {
+            let m = EcdsaSignatureMaterials::<C>::default();
+            Self {
+                pk_x: split_biguint(&to_biguint(m.pk.coordinates().unwrap().x())),
+                pk_y: split_biguint(&to_biguint(m.pk.coordinates().unwrap().y())),
+                pk_is_identity: false,
+
+                msg_hash: split_biguint(&to_biguint(&m.msg_hash)),
+                r: split_biguint(&to_biguint(&m.r)),
+                s: split_biguint(&to_biguint(&m.s)),
+                r_y: split_biguint(&to_biguint(&m.r_y)),
+                r_is_identity: m.r_is_identity,
+
+                _mark: PhantomData,
+            }
+        }
+    }
+
+    #[derive(Debug, PartialEq)]
+    struct TestCircuit<F, C, const N: usize> {
+        extra: HostExtraInput<F>,
+        inputs: [ECDSAInput<F, C>; N],
         _marker: PhantomData<C>,
     }
 
-    impl<N: FieldExt, C: CurveAffine> TestCircuit<N, C> {
-        fn assign_input(
+    impl<F: FieldExt, C: CurveAffine, const N: usize> TestCircuit<F, C, N> {
+        fn assign(
             &self,
             input_column: &Column<Advice>,
-            layouter: impl Layouter<N>,
-        ) -> Result<Vec<Limb<N>>, Error> {
+            layouter: impl Layouter<F>,
+        ) -> Result<Vec<Limb<F>>, Error> {
             layouter.assign_region(
                 || "assign input region ",
                 |region| {
                     let mut offset = 0;
                     let mut result = Vec::new();
 
-                    if self == &Self::default() {
-                        return Ok(Vec::new());
-                    }
-
                     for input in &self.inputs {
-                        for x in input.pk_x {
-                            let cell = Limb::new(
-                                Some(region.assign_advice(
-                                    || "pk_x",
-                                    input_column.clone(),
-                                    offset,
-                                    || Ok(x),
-                                )?),
-                                x,
-                            );
-                            offset += 1;
-                            result.push(cell);
-                        }
-
-                        for y in input.pk_y {
-                            let cell = Limb::new(
-                                Some(region.assign_advice(
-                                    || "pk_y",
-                                    input_column.clone(),
-                                    offset,
-                                    || Ok(y),
-                                )?),
-                                y,
-                            );
-                            offset += 1;
-                            result.push(cell);
-                        }
-
-                        let pk_is_identity = if input.pk_is_identity {
-                            N::one()
-                        } else {
-                            N::zero()
-                        };
-                        let cell = Limb::new(
-                            Some(region.assign_advice(
-                                || "pk_is_identity",
-                                input_column.clone(),
-                                offset,
-                                || Ok(pk_is_identity),
-                            )?),
-                            pk_is_identity,
-                        );
-                        offset += 1;
-                        result.push(cell);
-
-                        for h in input.msg_hash {
-                            let cell = Limb::new(
-                                Some(region.assign_advice(
-                                    || "msg_hash",
-                                    input_column.clone(),
-                                    offset,
-                                    || Ok(h),
-                                )?),
-                                h,
-                            );
-                            offset += 1;
-                            result.push(cell);
-                        }
-
-                        for r_i in input.r {
-                            let cell = Limb::new(
-                                Some(region.assign_advice(
-                                    || "r",
-                                    input_column.clone(),
-                                    offset,
-                                    || Ok(r_i),
-                                )?),
-                                r_i,
-                            );
-                            offset += 1;
-                            result.push(cell);
-                        }
-
-                        for s_i in input.s {
-                            let cell = Limb::new(
-                                Some(region.assign_advice(
-                                    || "s_i",
-                                    input_column.clone(),
-                                    offset,
-                                    || Ok(s_i),
-                                )?),
-                                s_i,
-                            );
-                            offset += 1;
-                            result.push(cell);
-                        }
-
-                        for r_y_i in input.r_y {
-                            let cell = Limb::new(
-                                Some(region.assign_advice(
-                                    || "r_y",
-                                    input_column.clone(),
-                                    offset,
-                                    || Ok(r_y_i),
-                                )?),
-                                r_y_i,
-                            );
-                            offset += 1;
-                            result.push(cell);
-                        }
-
-                        let r_is_identity = if input.r_is_identity {
-                            N::one()
-                        } else {
-                            N::zero()
-                        };
-                        let cell = Limb::new(
-                            Some(region.assign_advice(
-                                || "r_is_identity",
-                                input_column.clone(),
-                                offset,
-                                || Ok(r_is_identity),
-                            )?),
-                            r_is_identity,
-                        );
-                        offset += 1;
-                        result.push(cell);
+                        result.append(&mut Self::assign_input(
+                            region,
+                            input_column,
+                            input,
+                            &mut offset,
+                        )?);
                     }
 
                     Ok(result)
                 },
             )
         }
+
+        fn assign_cell(
+            region: &Region<'_, F>,
+            annotation: &str,
+            input_column: &Column<Advice>,
+            value: F,
+            offset: &mut usize,
+        ) -> Result<Limb<F>, Error> {
+            let l = Limb::new(
+                Some(region.assign_advice(
+                    || annotation,
+                    input_column.clone(),
+                    *offset,
+                    || Ok(value.clone()),
+                )?),
+                value,
+            );
+
+            *offset += 1;
+            Ok(l)
+        }
+
+        fn assign_input(
+            region: &Region<'_, F>,
+            input_column: &Column<Advice>,
+            input: &ECDSAInput<F, C>,
+            offset: &mut usize,
+        ) -> Result<Vec<Limb<F>>, Error> {
+            let mut result = Vec::new();
+
+            result.append(
+                &mut input
+                    .pk_x
+                    .iter()
+                    .map(|x| Self::assign_cell(region, "pk_x", input_column, *x, offset))
+                    .collect::<Result<_, _>>()?,
+            );
+            result.append(
+                &mut input
+                    .pk_y
+                    .iter()
+                    .map(|y| Self::assign_cell(region, "pk_y", input_column, *y, offset))
+                    .collect::<Result<_, _>>()?,
+            );
+
+            result.push(Self::assign_cell(
+                region,
+                "pk_is_identity",
+                input_column,
+                if input.pk_is_identity {
+                    F::one()
+                } else {
+                    F::zero()
+                },
+                offset,
+            )?);
+
+            result.append(
+                &mut input
+                    .msg_hash
+                    .iter()
+                    .map(|h| Self::assign_cell(region, "msg_hash", input_column, *h, offset))
+                    .collect::<Result<_, _>>()?,
+            );
+            result.append(
+                &mut input
+                    .r
+                    .iter()
+                    .map(|r| Self::assign_cell(region, "r", input_column, *r, offset))
+                    .collect::<Result<_, _>>()?,
+            );
+            result.append(
+                &mut input
+                    .s
+                    .iter()
+                    .map(|s| Self::assign_cell(region, "s", input_column, *s, offset))
+                    .collect::<Result<_, _>>()?,
+            );
+            result.append(
+                &mut input
+                    .r_y
+                    .iter()
+                    .map(|r_y| Self::assign_cell(region, "r_y", input_column, *r_y, offset))
+                    .collect::<Result<_, _>>()?,
+            );
+
+            result.push(Self::assign_cell(
+                region,
+                "r_is_identity",
+                input_column,
+                if input.r_is_identity {
+                    F::one()
+                } else {
+                    F::zero()
+                },
+                offset,
+            )?);
+
+            Ok(result)
+        }
     }
 
-    impl<N: FieldExt, C: CurveAffine> Circuit<N> for TestCircuit<N, C> {
+    impl<F: FieldExt, C: CurveAffine, const N: usize> Default for TestCircuit<F, C, N> {
+        fn default() -> Self {
+            Self {
+                extra: Default::default(),
+                inputs: [ECDSAInput::default(); N],
+                _marker: Default::default(),
+            }
+        }
+    }
+
+    impl<F: FieldExt, C: CurveAffine, const N: usize> Circuit<F> for TestCircuit<F, C, N> {
         type Config = TestConfig;
         type FloorPlanner = FlatFloorPlanner;
 
@@ -542,26 +559,30 @@ pub mod circuits_test {
             Self::default()
         }
 
-        fn configure(meta: &mut ConstraintSystem<N>) -> Self::Config {
+        fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
             let input = meta.advice_column();
+            // let commitment = meta.instance_column();
+
             meta.enable_equality(input);
+            // meta.enable_equality(commitment);
 
             TestConfig {
                 chip_config: EcdsaChip::configure(meta),
                 input,
+                // commitment,
             }
         }
 
         fn synthesize(
             &self,
             config: Self::Config,
-            mut layouter: impl Layouter<N>,
+            mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
-            let chip = EcdsaChip::<N>::construct(config.chip_config);
-
-            let inputs = self.assign_input(&config.input, layouter.namespace(|| "assign input"))?;
+            let chip = EcdsaChip::<F>::construct(config.chip_config);
 
             chip.range_chip.init_table(&layouter)?;
+            let inputs = self.assign(&config.input, layouter.namespace(|| "synthesize assign"))?;
+
             chip.verify::<C>(&self.extra, &inputs, &layouter)
         }
     }
@@ -591,10 +612,10 @@ pub mod circuits_test {
         ]
     }
 
-    pub fn test_circuits<C: CurveAffine, N: FieldExt>(count: usize) {
+    pub fn test_circuits<C: CurveAffine, F: FieldExt, const N: usize>() {
         let g = C::generator();
 
-        let inputs = (0..count)
+        let inputs = (0..N)
             .into_iter()
             .map(|_| {
                 let sk = C::ScalarExt::rand();
@@ -632,6 +653,8 @@ pub mod circuits_test {
                     s: split_biguint(&to_biguint(&s)),
                     r_y: split_biguint(&to_biguint(&r_y)),
                     r_is_identity,
+
+                    _mark: PhantomData,
                 };
 
                 // check input data
@@ -639,18 +662,20 @@ pub mod circuits_test {
 
                 input
             })
-            .collect();
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
 
-        let extra = HostExtraInput {
-            commitment: Some(N::rand()),
-        };
-        let circuit = TestCircuit::<_, C> {
-            extra: extra.clone(),
+        let circuit = TestCircuit::<_, C, N> {
+            extra: HostExtraInput {
+                commitment: Some(F::rand()),
+            },
             inputs,
             _marker: PhantomData,
         };
 
-        let prover = MockProver::run(23, &circuit, vec![vec![extra.commitment.unwrap()]]).unwrap();
+        let prover =
+            MockProver::run(23, &circuit, vec![vec![circuit.extra.commitment.unwrap()]]).unwrap();
         assert_eq!(prover.verify(), Ok(()));
     }
 }
