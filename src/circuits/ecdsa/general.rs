@@ -42,15 +42,15 @@ pub struct EcdsaChipConfig {
     commitment: Column<Instance>,
 }
 
-pub struct EcdsaChip<N: FieldExt> {
+pub struct EcdsaChip<C: CurveAffine, N: FieldExt, const R: usize> {
     config: EcdsaChipConfig,
     base_chip: BaseChip<N>,
     pub range_chip: RangeChip<N>,
     point_select_chip: SelectChip<N>,
-    _marker: PhantomData<N>,
+    _marker: PhantomData<(C, N)>,
 }
 
-impl<N: FieldExt> Chip<N> for EcdsaChip<N> {
+impl<C: CurveAffine, N: FieldExt, const R: usize> Chip<N> for EcdsaChip<C, N, R> {
     type Config = EcdsaChipConfig;
     type Loaded = ();
 
@@ -63,7 +63,7 @@ impl<N: FieldExt> Chip<N> for EcdsaChip<N> {
     }
 }
 
-impl<N: FieldExt> EcdsaChip<N> {
+impl<C: CurveAffine, N: FieldExt, const R: usize> EcdsaChip<C, N, R> {
     pub fn construct(config: <Self as Chip<N>>::Config) -> Self {
         Self {
             config: config.clone(),
@@ -90,7 +90,7 @@ impl<N: FieldExt> EcdsaChip<N> {
     /// ls[i] when i > 0:
     /// index:   0 1 2 | 3 4 5 |        6       |   7 8 9  | 10 11 12 | 13 14 15 | 16 17 18 |       19
     /// meaning:  pk_x | pk_y  | pk_is_identity | msg_hash |    r     |     s    |    r_y   | r_is_identity
-    pub fn verify<C: CurveAffine>(
+    pub fn verify(
         &self,
         extra: &HostExtraInput<N>,
         ls: &Vec<Limb<N>>,
@@ -404,13 +404,13 @@ pub mod circuits_test {
     }
 
     #[derive(Debug, PartialEq)]
-    struct TestCircuit<F, C, const N: usize> {
+    struct TestCircuit<F, C, const MR: usize, const N: usize> {
         extra: HostExtraInput<F>,
         inputs: [ECDSAInput<F, C>; N],
         _marker: PhantomData<C>,
     }
 
-    impl<F: FieldExt, C: CurveAffine, const N: usize> TestCircuit<F, C, N> {
+    impl<F: FieldExt, C: CurveAffine, const MR: usize, const N: usize> TestCircuit<F, C, MR, N> {
         fn assign(
             &self,
             input_column: &Column<Advice>,
@@ -537,7 +537,9 @@ pub mod circuits_test {
         }
     }
 
-    impl<F: FieldExt, C: CurveAffine, const N: usize> Default for TestCircuit<F, C, N> {
+    impl<F: FieldExt, C: CurveAffine, const MR: usize, const N: usize> Default
+        for TestCircuit<F, C, MR, N>
+    {
         fn default() -> Self {
             Self {
                 extra: Default::default(),
@@ -547,7 +549,9 @@ pub mod circuits_test {
         }
     }
 
-    impl<F: FieldExt, C: CurveAffine, const N: usize> Circuit<F> for TestCircuit<F, C, N> {
+    impl<F: FieldExt, C: CurveAffine, const MR: usize, const N: usize> Circuit<F>
+        for TestCircuit<F, C, MR, N>
+    {
         type Config = TestConfig;
         type FloorPlanner = FlatFloorPlanner;
 
@@ -563,7 +567,7 @@ pub mod circuits_test {
             // meta.enable_equality(commitment);
 
             TestConfig {
-                chip_config: EcdsaChip::configure(meta),
+                chip_config: EcdsaChip::<C, F, MR>::configure(meta),
                 input,
                 // commitment,
             }
@@ -574,12 +578,12 @@ pub mod circuits_test {
             config: Self::Config,
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
-            let chip = EcdsaChip::<F>::construct(config.chip_config);
+            let chip = EcdsaChip::<C, F, MR>::construct(config.chip_config);
 
             chip.range_chip.init_table(&layouter)?;
             let inputs = self.assign(&config.input, layouter.namespace(|| "synthesize assign"))?;
 
-            chip.verify::<C>(&self.extra, &inputs, &layouter)
+            chip.verify(&self.extra, &inputs, &layouter)
         }
     }
 
@@ -608,7 +612,7 @@ pub mod circuits_test {
         ]
     }
 
-    pub fn test_circuits<C: CurveAffine, F: FieldExt, const N: usize>() {
+    pub fn test_circuits<C: CurveAffine, F: FieldExt, const MR: usize, const N: usize>(k: u32) {
         let g = C::generator();
 
         let inputs = (0..N)
@@ -662,7 +666,7 @@ pub mod circuits_test {
             .try_into()
             .unwrap();
 
-        let circuit = TestCircuit::<_, C, N> {
+        let circuit = TestCircuit::<_, C, MR, N> {
             extra: HostExtraInput {
                 commitment: Some(F::rand()),
             },
@@ -671,7 +675,7 @@ pub mod circuits_test {
         };
 
         let prover =
-            MockProver::run(23, &circuit, vec![vec![circuit.extra.commitment.unwrap()]]).unwrap();
+            MockProver::run(k, &circuit, vec![vec![circuit.extra.commitment.unwrap()]]).unwrap();
         assert_eq!(prover.verify(), Ok(()));
     }
 }

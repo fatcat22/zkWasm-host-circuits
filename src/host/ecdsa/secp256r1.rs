@@ -11,7 +11,7 @@ pub fn verify(
 
 #[cfg(test)]
 mod tests {
-    use crate::adaptor::secp256r1adaptor;
+    use crate::circuits::ecdsa::secp256r1::TOTAL_ROUNDS;
     use halo2_proofs::pairing::bn256::Fr;
 
     use super::{super::general::test_helper, *};
@@ -19,7 +19,7 @@ mod tests {
     #[test]
     fn generate_ecdsa_input() {
         test_helper::generate_ecdsa_input::<secp256r1::Secp256r1Affine, Fr, _>(
-            secp256r1adaptor::TOTAL_CONSTRUCTIONS - 1, // need at least one default value
+            TOTAL_ROUNDS - 1, // need at least one default value
             "ecdsa_secp256r1.json",
         );
     }

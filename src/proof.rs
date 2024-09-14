@@ -4,7 +4,7 @@ use crate::circuits::{
     bls::Bls381SumChip,
     bn256::Bn256PairChip,
     bn256::Bn256SumChip,
-    ecdsa::EcdsaChip,
+    ecdsa::secp256r1::EcdsaSecp256R1Chip,
     host::{HostOpChip, HostOpConfig, HostOpSelector},
     keccak256::KeccakChip,
     merkle::MerkleChip,
@@ -256,7 +256,7 @@ pub fn exec_create_host_proof(
             gen_proof!(circuit, circuit.instances);
         }
         OpType::ECDSASECP256R1 => {
-            let circuit = build_host_circuit::<EcdsaChip<Fr>>(v, k, ());
+            let circuit = build_host_circuit::<EcdsaSecp256R1Chip<Fr>>(v, k, ());
             gen_proof!(circuit, circuit.instances);
         }
     };

@@ -6,11 +6,11 @@ use num_bigint::BigUint;
 
 pub mod bls381adaptor;
 pub mod bn256adaptor;
+pub mod ecdsaadaptor;
 pub mod hashadaptor;
 pub mod keccakadaptor;
 pub mod merkleadaptor;
 pub mod msmadaptor;
-pub mod secp256r1adaptor;
 
 pub fn get_max_round(k: usize, reference_max: usize) -> usize {
     if k >= 22 {

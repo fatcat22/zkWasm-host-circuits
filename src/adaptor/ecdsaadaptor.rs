@@ -1,6 +1,6 @@
 use crate::{
     circuits::{
-        ecdsa::{EcdsaChip, EcdsaChipConfig},
+        ecdsa::general::{EcdsaChip, EcdsaChipConfig},
         host::{HostOpConfig, HostOpSelector},
     },
     host::{ecdsa, secp256r1, ExternalHostCallEntry, ForeignInst},
@@ -8,16 +8,12 @@ use crate::{
     utils::Limb,
 };
 use halo2_proofs::{
-    arithmetic::FieldExt,
+    arithmetic::{CurveAffine, FieldExt},
     circuit::{Layouter, Region},
     pairing::bn256::Fr,
     plonk::{Advice, Column, ConstraintSystem, Error},
 };
 use std::cmp;
-
-/// how many signatures can be verify at a time when k equal 22.
-/// but if k is 23, this value could be 170 (don't no why yet)
-pub const TOTAL_CONSTRUCTIONS: usize = 166;
 
 struct EcdsaNumberPattern {
     /// The count of `u64` values required to represent this number when split
@@ -63,7 +59,7 @@ const ECDSA_GROUP_PATTERN: &[&'static EcdsaNumberPattern] = &[
     &ECDSA_IS_IDENTITY_PATTERN,
 ];
 
-impl HostOpSelector for EcdsaChip<Fr> {
+impl<C: CurveAffine, const R: usize> HostOpSelector for EcdsaChip<C, Fr, R> {
     type Config = EcdsaChipConfig;
     type Helper = ();
     fn configure(
@@ -78,7 +74,7 @@ impl HostOpSelector for EcdsaChip<Fr> {
     }
 
     fn max_rounds(k: usize) -> usize {
-        super::get_max_round(k, TOTAL_CONSTRUCTIONS)
+        super::get_max_round(k, R)
     }
 
     fn opcodes() -> Vec<Fr> {
@@ -135,7 +131,7 @@ impl HostOpSelector for EcdsaChip<Fr> {
         layouter: &impl Layouter<Fr>,
     ) -> Result<(), Error> {
         self.range_chip.init_table(layouter)?;
-        self.verify::<secp256r1::Secp256r1Affine>(extra, &arg_cells, layouter)?;
+        self.verify(extra, &arg_cells, layouter)?;
         Ok(())
     }
 
