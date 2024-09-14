@@ -124,7 +124,6 @@ impl<S: HostOpSelector> Circuit<Fr> for HostOpCircuit<Fr, S> {
             || "filter operands and opcodes",
             |region| {
                 let mut offset = 0;
-                println!("extra: {:?}", self.extra);
                 let all_arg_cells = host_op_chip.assign(
                     &region,
                     self.k,
@@ -134,8 +133,6 @@ impl<S: HostOpSelector> Circuit<Fr> for HostOpCircuit<Fr, S> {
                 )?;
                 let mut selector_chip = S::construct(config.selectconfig.clone());
 
-                println!("total arg cells: {:?}", all_arg_cells.len());
-                println!("selector offset start at: {:?}", offset);
                 selector_chip.synthesize(
                     &mut offset,
                     &all_arg_cells,

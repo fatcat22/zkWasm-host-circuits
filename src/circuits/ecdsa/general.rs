@@ -100,10 +100,7 @@ impl<N: FieldExt> EcdsaChip<N> {
         let mut ctx = GeneralScalarEccContext::<C, _>::new(context);
 
         // prepare some inmutable variables
-        // TODO: ctx.assign_nonzero_point is better?
         let g = ctx.assign_constant_point(&C::generator().to_curve());
-        // TODO: constrain lambda equals ls[0]
-        // let ls0 = ls.get(0).map(|v| v.value).unwrap_or(N::zero());
         let lambda = BigUint::from_str_radix(
             format!("{:?}", extra.commitment.unwrap_or(N::zero()))
                 .strip_prefix("0x")
@@ -111,7 +108,6 @@ impl<N: FieldExt> EcdsaChip<N> {
             16,
         )
         .unwrap();
-        println!("lambda: 0x{:x}", lambda);
         let lambda = ctx.scalar_integer_ctx.assign_w(&lambda);
 
         let negtive_one = ctx
@@ -174,7 +170,6 @@ impl<N: FieldExt> EcdsaChip<N> {
         let result = ctx.msm(&points, &scalars);
         let result = ctx.ecc_reduce(&result);
         enable_point_permute(&mut ctx, &result);
-        println!("msm res: {:?}", result);
 
         let expect = ctx.assign_constant_point(
             &C::from_xy(C::Base::zero(), C::Base::zero())
@@ -309,6 +304,7 @@ fn enable_integer_permute<T: BaseExt, N: FieldExt>(
     expect: &AssignedInteger<T, N>,
 ) -> Result<(), Error> {
     for (s_limb, e_limb) in scalar.limbs_le.iter().zip(expect.limbs_le.iter()) {
+        assert_eq!(s_limb.val, e_limb.val);
         let s_cell = get_cell_of_ctx(cells, &s_limb.cell);
         let e_cell = get_cell_of_ctx(cells, &e_limb.cell);
         region.constrain_equal(s_cell.cell(), e_cell.cell())?;
