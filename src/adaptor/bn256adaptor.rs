@@ -268,7 +268,7 @@ impl HostOpSelector for Bn256PairChip<Fr> {
 
         let total_avail_rounds = Self::max_rounds(k);
 
-        for _ in 0..total_avail_rounds - total_used_instructions {
+        for _ in 0..=(total_avail_rounds - total_used_instructions) {
             // get g1_x and g1_y: ((1,1) (1,1) 1) * 2
             for j in 0..2 {
                 for i in 0..2 {
@@ -546,7 +546,7 @@ impl HostOpSelector for Bn256SumChip<Fr> {
 
         let total_avail_rounds = Self::max_rounds(k);
 
-        for _ in 0..total_avail_rounds - total_used_instructions {
+        for _ in 0..=(total_avail_rounds - total_used_instructions) {
             // whether new is zero or not
             let ((operand, opcode), index) = default_entries[0].clone();
             let (limb, _op) = config.assign_one_line(

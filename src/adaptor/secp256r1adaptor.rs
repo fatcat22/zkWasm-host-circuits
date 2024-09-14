@@ -13,6 +13,7 @@ use halo2_proofs::{
     pairing::bn256::Fr,
     plonk::{Advice, Column, ConstraintSystem, Error},
 };
+use std::cmp;
 
 struct EcdsaNumberPattern {
     /// The count of `u64` values required to represent this number when split
@@ -114,13 +115,14 @@ impl HostOpSelector for EcdsaChip<Fr> {
         )?);
 
         let total_avail_rounds = Self::max_rounds(k);
-        assert!(total_avail_rounds >= total_used_instructions);
-        r.append(&mut assign_default(
-            region,
-            offset,
-            config,
-            total_avail_rounds - total_used_instructions,
-        )?);
+        assert!(
+            total_avail_rounds >= total_used_instructions,
+            "total_avail_rounds:{}. total_used_instructions:{}",
+            total_avail_rounds,
+            total_used_instructions
+        );
+        let default_round = cmp::max(total_avail_rounds - total_used_instructions, 1); // need at least one default value (which means enable = false)
+        r.append(&mut assign_default(region, offset, config, default_round)?);
 
         Ok(r)
     }
