@@ -15,6 +15,9 @@ use halo2_proofs::{
 };
 use std::cmp;
 
+/// how many signatures can be verify at a time when k equal 22.
+pub const TOTAL_CONSTRUCTIONS: usize = 170;
+
 struct EcdsaNumberPattern {
     /// The count of `u64` values required to represent this number when split
     count_of_u64: usize,
@@ -58,9 +61,6 @@ const ECDSA_GROUP_PATTERN: &[&'static EcdsaNumberPattern] = &[
     // r_is_identity
     &ECDSA_IS_IDENTITY_PATTERN,
 ];
-
-/// how many signatures can be verify at a time when k equal 22.
-const TOTAL_CONSTRUCTIONS: usize = 170;
 
 impl HostOpSelector for EcdsaChip<Fr> {
     type Config = EcdsaChipConfig;
