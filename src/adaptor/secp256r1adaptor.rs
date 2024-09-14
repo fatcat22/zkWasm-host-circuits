@@ -16,7 +16,8 @@ use halo2_proofs::{
 use std::cmp;
 
 /// how many signatures can be verify at a time when k equal 22.
-pub const TOTAL_CONSTRUCTIONS: usize = 170;
+/// but if k is 23, this value could be 170 (don't no why yet)
+pub const TOTAL_CONSTRUCTIONS: usize = 166;
 
 struct EcdsaNumberPattern {
     /// The count of `u64` values required to represent this number when split
